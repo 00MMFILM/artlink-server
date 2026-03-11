@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "headers": {
+        "Access-Control-Allow-Origin": "*"
+      }
+    }
+  ]
+}
