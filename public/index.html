@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArtLink - 고객 지원</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #F0F0F5; color: #1C1C1E; line-height: 1.6; }
+    .header { background: linear-gradient(135deg, #FF2D78, #FF6BA1); padding: 48px 24px; text-align: center; color: white; }
+    .header h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+    .header p { font-size: 16px; opacity: 0.9; }
+    .container { max-width: 680px; margin: 0 auto; padding: 24px 16px; }
+    .card { background: white; border-radius: 16px; padding: 24px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .card h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; color: #1C1C1E; }
+    .card h3 { font-size: 16px; font-weight: 600; margin: 16px 0 8px; color: #48484A; }
+    .card p, .card li { font-size: 15px; color: #48484A; line-height: 1.8; }
+    .card ul { padding-left: 20px; }
+    .card li { margin-bottom: 8px; }
+    .contact-btn { display: inline-block; background: #FF2D78; color: white; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-weight: 600; font-size: 16px; margin-top: 12px; }
+    .contact-btn:hover { background: #E0256A; }
+    .badge { display: inline-block; background: #FFF0F5; color: #FF2D78; padding: 4px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+    .faq-item { border-top: 1px solid #E8E8ED; padding-top: 16px; margin-top: 16px; }
+    .faq-item:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+    .faq-q { font-weight: 600; color: #1C1C1E; margin-bottom: 6px; }
+    .faq-a { color: #8E8E93; }
+    .footer { text-align: center; padding: 32px 16px; color: #AEAEB2; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>ArtLink</h1>
+    <p>예술가와 창작자를 위한 연습 노트 관리 앱</p>
+  </div>
+
+  <div class="container">
+    <!-- Support Contact -->
+    <div class="card">
+      <span class="badge">고객 지원</span>
+      <h2>도움이 필요하신가요?</h2>
+      <p>ArtLink 이용 중 문의사항이나 문제가 있으시면 언제든 연락해 주세요. 24시간 이내에 답변드리겠습니다.</p>
+      <a href="mailto:lcy1152@naver.com?subject=ArtLink%20%EB%AC%B8%EC%9D%98" class="contact-btn">이메일 문의하기</a>
+      <p style="margin-top: 12px; color: #8E8E93; font-size: 14px;">lcy1152@naver.com</p>
+    </div>
+
+    <!-- FAQ -->
+    <div class="card">
+      <span class="badge">FAQ</span>
+      <h2>자주 묻는 질문</h2>
+
+      <div class="faq-item">
+        <p class="faq-q">Q: 앱이 정상적으로 작동하지 않아요.</p>
+        <p class="faq-a">A: 앱을 완전히 종료한 후 다시 실행해 주세요. 문제가 지속되면 이메일로 문의해 주세요.</p>
+      </div>
+
+      <div class="faq-item">
+        <p class="faq-q">Q: 계정을 삭제하고 싶어요.</p>
+        <p class="faq-a">A: 프로필 탭 > 계정 삭제에서 직접 삭제할 수 있습니다. 삭제 시 모든 데이터가 영구적으로 제거됩니다.</p>
+      </div>
+
+      <div class="faq-item">
+        <p class="faq-q">Q: 부적절한 콘텐츠를 발견했어요.</p>
+        <p class="faq-a">A: 해당 게시물의 ··· 버튼을 눌러 신고해 주세요. 24시간 이내에 검토 후 조치합니다.</p>
+      </div>
+
+      <div class="faq-item">
+        <p class="faq-q">Q: 다른 사용자를 차단하고 싶어요.</p>
+        <p class="faq-a">A: 해당 게시물의 ··· 버튼 > 작성자 차단을 선택하면 즉시 피드에서 제거됩니다.</p>
+      </div>
+
+      <div class="faq-item">
+        <p class="faq-q">Q: 앱은 무료인가요?</p>
+        <p class="faq-a">A: 네, ArtLink의 모든 기능은 무료로 이용 가능합니다.</p>
+      </div>
+    </div>
+
+    <!-- Terms of Service -->
+    <div class="card" id="terms">
+      <span class="badge">이용약관</span>
+      <h2>서비스 이용약관</h2>
+      <p>최종 수정일: 2026년 3월 1일</p>
+
+      <h3>제1조 (목적)</h3>
+      <p>본 약관은 ArtLink(이하 "앱")가 제공하는 서비스의 이용 조건 및 절차, 이용자와 앱 간의 권리·의무 및 책임사항을 규정함을 목적으로 합니다.</p>
+
+      <h3>제2조 (서비스 개요)</h3>
+      <p>ArtLink는 예술가 및 창작자를 위한 연습 노트 관리, 매칭, 포트폴리오 관리 서비스를 제공합니다.</p>
+
+      <h3>제3조 (이용자의 의무)</h3>
+      <ul>
+        <li>타인에 대한 괴롭힘, 위협, 차별적 발언 금지</li>
+        <li>불법적이거나 유해한 콘텐츠 게시 금지</li>
+        <li>음란물, 폭력적 콘텐츠, 혐오 발언 게시 금지</li>
+        <li>타인의 개인정보 무단 수집 및 유포 금지</li>
+        <li>스팸, 사기, 허위 정보 유포 금지</li>
+      </ul>
+
+      <h3>제4조 (콘텐츠 정책)</h3>
+      <p>본 앱은 부적절한 콘텐츠 및 악용 행위에 대해 무관용 정책을 적용합니다. 부적절한 콘텐츠가 발견될 경우 사전 통지 없이 삭제될 수 있습니다.</p>
+
+      <h3>제5조 (신고 및 차단)</h3>
+      <ul>
+        <li>이용자는 부적절한 콘텐츠를 앱 내 신고 기능을 통해 신고할 수 있습니다.</li>
+        <li>이용자는 다른 이용자를 차단할 수 있으며, 차단 시 해당 이용자의 콘텐츠가 즉시 피드에서 제거됩니다.</li>
+        <li>신고된 콘텐츠는 운영팀이 24시간 이내에 검토하고 조치합니다.</li>
+      </ul>
+
+      <h3>제6조 (제재)</h3>
+      <p>약관을 위반한 이용자는 콘텐츠 삭제, 서비스 이용 정지, 또는 계정 영구 정지 등의 제재를 받을 수 있습니다.</p>
+    </div>
+
+    <!-- Privacy Policy -->
+    <div class="card" id="privacy">
+      <span class="badge">개인정보 처리방침</span>
+      <h2>개인정보 처리방침</h2>
+      <p>최종 수정일: 2026년 3월 1일</p>
+
+      <h3>수집하는 개인정보</h3>
+      <p>이름, 이메일, 프로필 정보 (성별, 생년월일, 키, 특기 등)</p>
+
+      <h3>수집 목적</h3>
+      <p>서비스 제공 및 개선, 매칭 기능 지원</p>
+
+      <h3>보관 기간</h3>
+      <p>계정 삭제 시까지. 이용자는 언제든지 프로필 > 계정 삭제를 통해 모든 개인정보를 삭제할 수 있습니다.</p>
+
+      <h3>제3자 제공</h3>
+      <p>수집된 정보는 제3자에게 제공하지 않습니다.</p>
+
+      <h3>문의</h3>
+      <p>개인정보 관련 문의: <a href="mailto:lcy1152@naver.com">lcy1152@naver.com</a></p>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>&copy; 2026 ArtLink. All rights reserved.</p>
+  </div>
+</body>
+</html>
