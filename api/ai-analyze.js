@@ -115,7 +115,7 @@ ${fewShot}`;
 
     return res.status(200).json({ analysis });
   } catch (error) {
-    console.error("[ai-analyze] Error:", error.message);
-    return res.status(500).json({ error: "AI analysis failed" });
+    console.error("[ai-analyze] Error:", error.message, error.status, error.error);
+    return res.status(500).json({ error: "AI analysis failed", detail: error.message });
   }
 }
