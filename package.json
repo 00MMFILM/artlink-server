@@ -1,5 +1,8 @@
 {
   "name": "artlink-server",
   "version": "1.0.0",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0"
+  }
 }
