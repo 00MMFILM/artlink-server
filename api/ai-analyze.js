@@ -133,15 +133,15 @@ ${fewShot}`;
       system: systemPrompt,
       messages: [
         { role: "user", content: prompt },
-        { role: "assistant", content: "📌 " },
+        { role: "assistant", content: "📌" },
       ],
     });
 
     // Prepend the prefill to the response
     const rawText = msg.content[0]?.text || "";
-    const analysis = "📌 " + rawText;
+    const analysis = "📌" + rawText;
 
-    if (!analysis || analysis.trim() === "📌") {
+    if (!analysis || analysis.trim().length < 10) {
       return res.status(500).json({ error: "Empty response from AI" });
     }
 
