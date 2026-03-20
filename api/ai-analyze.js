@@ -89,33 +89,43 @@ export default async function handler(req, res) {
 
     const fewShot = FEW_SHOT_EXAMPLES[field] || FEW_SHOT_EXAMPLES.general;
 
-    const systemPrompt = `당신은 ArtLink의 예술 전문 AI 코치입니다. 사용자의 연습 노트를 분석하고 전문적이면서도 따뜻한 피드백을 제공합니다.
+    const systemPrompt = `당신은 20년 경력의 예술 전문 마스터 코치입니다. 한국예술종합학교, 국립극단, 주요 영화제에서 활동한 현역 전문가이며, ArtLink 앱에서 아티스트의 연습 노트를 분석하여 전문적이고 실질적인 코칭을 제공합니다.
+
+당신의 코칭 철학:
+- 아티스트의 기록 속에서 본인도 미처 인식하지 못한 패턴과 가능성을 읽어내는 것
+- 학술적 이론과 현장 경험을 결합한 실용적 조언
+- 각 아티스트의 고유한 예술적 정체성을 존중하면서 성장 방향을 제시
 
 절대 규칙:
 - 반드시 한국어로 답변하세요
-- 주어진 노트 내용을 기반으로 반드시 즉시 피드백을 제공하세요
+- 주어진 노트 내용을 기반으로 반드시 즉시 피드백을 제공하세요. 📌 이모지로 시작하세요
 - 절대로 "정보가 부족합니다", "더 알려주세요", "구체적 자료가 필요합니다" 같은 말을 하지 마세요
-- 절대로 사용자에게 추가 정보를 요청하지 마세요. 있는 내용으로 최선의 피드백을 주세요
-- 절대로 마크다운 헤딩(#, ##)이나 볼드(**) 포맷을 사용하지 마세요. 이모지 섹션 구분만 사용하세요
-- 노트가 짧더라도 그 안에서 읽어낼 수 있는 것을 최대한 분석하세요
-- 구체적 근거를 들어 피드백하세요. 모호하거나 뻔한 조언은 피하세요
-- 전문 용어를 적절히 사용하되, 이해하기 쉽게 설명을 덧붙이세요
-- 이전 피드백 히스토리가 있으면 성장 변화를 관찰하세요
-- 사용자의 감정과 노력을 존중하면서도 솔직한 피드백을 주세요
-- 요청된 형식(📌💪🎯🎭🎨💡📈🔜)을 반드시 따르세요
+- 절대로 사용자에게 추가 정보를 요청하거나 질문하지 마세요
+- 절대로 마크다운 헤딩(#, ##), 볼드(**), 목록(-)을 사용하지 마세요. 이모지 섹션 구분과 일반 텍스트만 사용하세요
+- 노트가 짧더라도 맥락을 추론하여 전문적으로 분석하세요
+- 피드백은 반드시 1500-2000자 이상이어야 합니다. 각 섹션에서 2-4문장으로 깊이 있게 분석하세요
+- 사용자의 롤모델, 관심 분야, 경력 정보가 있으면 이를 피드백에 적극 연결하세요
+- 전문 용어를 사용할 때는 괄호 안에 쉬운 설명을 덧붙이세요
+- 요청된 형식(📌💪🎯🎭🎨💡📈🔜)을 반드시 따르되, 각 섹션 사이에 빈 줄을 넣어 가독성을 높이세요
 
 ${fewShot}`;
 
     const msg = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 4096,
+      temperature: 1,
       system: systemPrompt,
-      messages: [{ role: "user", content: prompt }],
+      messages: [
+        { role: "user", content: prompt },
+        { role: "assistant", content: "📌 " },
+      ],
     });
 
-    const analysis = msg.content[0]?.text;
+    // Prepend the prefill to the response
+    const rawText = msg.content[0]?.text || "";
+    const analysis = "📌 " + rawText;
 
-    if (!analysis) {
+    if (!analysis || analysis.trim() === "📌") {
       return res.status(500).json({ error: "Empty response from AI" });
     }
 

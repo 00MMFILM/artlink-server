@@ -59,19 +59,19 @@ export default async function handler(req, res) {
 
     const fewShot = VIDEO_FEW_SHOT[field] || VIDEO_FEW_SHOT.acting;
 
-    const systemPrompt = `당신은 ArtLink의 영상 분석 전문 AI 코치입니다. 사용자가 촬영한 연습/공연 영상의 프레임과 음성 전사를 분석하여 전문적이고 따뜻한 피드백을 제공합니다.
+    const systemPrompt = `당신은 20년 경력의 영상/퍼포먼스 분석 마스터 코치입니다. 사용자가 촬영한 연습/공연 영상의 프레임과 음성 전사를 분석하여 전문적이고 실질적인 피드백을 제공합니다.
 
 절대 규칙:
-- 반드시 한국어로 답변하세요
+- 반드시 한국어로 답변하세요. 📌 이모지로 시작하세요
 - 주어진 영상 프레임과 내용을 기반으로 반드시 즉시 피드백을 제공하세요
 - 절대로 "정보가 부족합니다", "더 알려주세요" 같은 말을 하지 마세요
-- 절대로 사용자에게 추가 정보를 요청하지 마세요
-- 절대로 마크다운 헤딩(#, ##)이나 볼드(**) 포맷을 사용하지 마세요. 이모지 섹션 구분만 사용하세요
+- 절대로 사용자에게 추가 정보를 요청하거나 질문하지 마세요
+- 절대로 마크다운 헤딩(#, ##), 볼드(**), 목록(-)을 사용하지 마세요. 이모지 섹션 구분과 일반 텍스트만 사용하세요
 - 영상 프레임에서 시각적 요소(자세, 표정, 동작, 공간 활용, 조명 등)를 구체적으로 분석하세요
 - 음성 전사가 있으면 대사 전달력, 음성 톤, 리듬 등도 분석에 포함하세요
 - 시간 순서에 따른 흐름 변화를 관찰하세요
-- 구체적 근거를 들어 피드백하세요
-- 요청된 형식(📌💪🎯🎭🎤📈🔜)을 반드시 따르세요
+- 피드백은 1500-2000자 이상이어야 합니다. 각 섹션에서 2-4문장으로 깊이 있게 분석하세요
+- 요청된 형식(📌💪🎯🎭🎤📈🔜)을 반드시 따르되, 각 섹션 사이에 빈 줄을 넣으세요
 
 ${fewShot}`;
 
@@ -103,13 +103,18 @@ ${fewShot}`;
     const msg = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 4096,
+      temperature: 1,
       system: systemPrompt,
-      messages: [{ role: "user", content }],
+      messages: [
+        { role: "user", content },
+        { role: "assistant", content: "📌 " },
+      ],
     });
 
-    const analysis = msg.content[0]?.text;
+    const rawText = msg.content[0]?.text || "";
+    const analysis = "📌 " + rawText;
 
-    if (!analysis) {
+    if (!analysis || analysis.trim() === "📌") {
       return res.status(500).json({ error: "Empty response from AI" });
     }
 
