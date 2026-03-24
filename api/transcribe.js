@@ -27,8 +27,35 @@ export default async function handler(req) {
   }
 
   try {
-    const formData = await req.formData();
-    const file = formData.get("file");
+    let file;
+
+    const contentType = req.headers.get("content-type") || "";
+
+    if (contentType.includes("application/json")) {
+      // URL-based: download video from Supabase Storage URL
+      const { videoUrl } = await req.json();
+      if (!videoUrl) {
+        return new Response(JSON.stringify({ error: "videoUrl required" }), {
+          status: 400,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      const videoRes = await fetch(videoUrl);
+      if (!videoRes.ok) {
+        return new Response(JSON.stringify({ error: "Failed to download video" }), {
+          status: 502,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      const blob = await videoRes.blob();
+      file = new File([blob], "video.mp4", { type: blob.type || "video/mp4" });
+    } else {
+      // Direct file upload (for small files under 4.5MB)
+      const formData = await req.formData();
+      file = formData.get("file");
+    }
 
     if (!file) {
       return new Response(JSON.stringify({ error: "No file provided" }), {
