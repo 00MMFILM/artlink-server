@@ -1,6 +1,54 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { createClient } from "@supabase/supabase-js";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// Supabase client for dynamic few-shot examples
+const supabase =
+  process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
+    ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
+    : null;
+
+// Cache dynamic examples (5 min TTL)
+const exampleCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000;
+
+async function getDynamicExamples(field) {
+  if (!supabase) return "";
+
+  const cacheKey = field || "general";
+  const cached = exampleCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.value;
+
+  try {
+    const { data, error } = await supabase
+      .from("training_data")
+      .select("note_content, ai_feedback")
+      .eq("field", field || "acting")
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (error || !data || data.length === 0) return "";
+
+    // Pick 2 random examples from recent 20 for variety
+    const shuffled = data.sort(() => Math.random() - 0.5);
+    const picked = shuffled.slice(0, 2);
+
+    const examples = picked
+      .map((ex, i) => {
+        const note = ex.note_content.slice(0, 300);
+        const feedback = ex.ai_feedback.slice(0, 800);
+        return `[실제 노트 ${i + 1}]\n${note}...\n\n[피드백 ${i + 1}]\n${feedback}...`;
+      })
+      .join("\n\n---\n\n");
+
+    const result = `\n\n[추가 참고 예시 — 실제 ${cacheKey} 분야 노트와 피드백]\n${examples}`;
+    exampleCache.set(cacheKey, { value: result, ts: Date.now() });
+    return result;
+  } catch {
+    return "";
+  }
+}
 
 const FEW_SHOT_EXAMPLES = {
   acting: `[좋은 피드백 예시]
@@ -104,6 +152,7 @@ export default async function handler(req, res) {
     }
 
     const fewShot = FEW_SHOT_EXAMPLES[field] || FEW_SHOT_EXAMPLES.general;
+    const dynamicExamples = await getDynamicExamples(field);
 
     const systemPrompt = `당신은 20년 경력의 예술 전문 마스터 코치입니다. 한국예술종합학교, 국립극단, 주요 영화제에서 활동한 현역 전문가이며, ArtLink 앱에서 아티스트의 연습 노트를 분석하여 전문적이고 실질적인 코칭을 제공합니다.
 
@@ -124,7 +173,7 @@ export default async function handler(req, res) {
 - 전문 용어를 사용할 때는 괄호 안에 쉬운 설명을 덧붙이세요
 - 요청된 형식(📌💪🎯🎭🎨💡📈🔜)을 반드시 따르되, 각 섹션 사이에 빈 줄을 넣어 가독성을 높이세요
 
-${fewShot}`;
+${fewShot}${dynamicExamples}`;
 
     const msg = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
