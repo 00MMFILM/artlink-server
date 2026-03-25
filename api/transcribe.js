@@ -1,102 +1,88 @@
-export const config = { runtime: "edge", maxDuration: 60 };
+import { execSync } from "child_process";
+import { writeFileSync, readFileSync, unlinkSync, chmodSync } from "fs";
+import { join } from "path";
+import os from "os";
+import ffmpegPath from "ffmpeg-static";
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+export const config = { maxDuration: 120 };
 
-export default async function handler(req) {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: CORS_HEADERS });
-  }
+export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-    });
-  }
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST")
+    return res.status(405).json({ error: "Method not allowed" });
 
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured" }), {
-      status: 500,
-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-    });
-  }
+  if (!apiKey)
+    return res.status(500).json({ error: "OPENAI_API_KEY not configured" });
+
+  const tmpDir = os.tmpdir();
+  const ts = Date.now();
+  const inputPath = join(tmpDir, `input_${ts}.mp4`);
+  const outputPath = join(tmpDir, `output_${ts}.mp3`);
 
   try {
-    let file;
+    // 1. Get video buffer from URL
+    const { videoUrl } = req.body || {};
+    if (!videoUrl)
+      return res.status(400).json({ error: "videoUrl required" });
 
-    const contentType = req.headers.get("content-type") || "";
+    const videoRes = await fetch(videoUrl);
+    if (!videoRes.ok)
+      return res.status(502).json({ error: "Failed to download video" });
 
-    if (contentType.includes("application/json")) {
-      // URL-based: download video from Supabase Storage URL
-      const { videoUrl } = await req.json();
-      if (!videoUrl) {
-        return new Response(JSON.stringify({ error: "videoUrl required" }), {
-          status: 400,
-          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-        });
+    const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
+    writeFileSync(inputPath, videoBuffer);
+
+    // 2. Extract audio with ffmpeg (removes video track, MP3 output ~3MB for 5min)
+    try {
+      chmodSync(ffmpegPath, 0o755);
+    } catch {}
+
+    execSync(
+      `${ffmpegPath} -i "${inputPath}" -vn -acodec libmp3lame -q:a 8 -y "${outputPath}"`,
+      { timeout: 60000, stdio: "pipe" }
+    );
+
+    const audioBuffer = readFileSync(outputPath);
+
+    // 3. Send audio to Whisper API
+    const formData = new FormData();
+    formData.append(
+      "file",
+      new Blob([audioBuffer], { type: "audio/mpeg" }),
+      "audio.mp3"
+    );
+    formData.append("model", "whisper-1");
+    formData.append("language", "ko");
+    formData.append("response_format", "text");
+
+    const whisperRes = await fetch(
+      "https://api.openai.com/v1/audio/transcriptions",
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: formData,
       }
-
-      const videoRes = await fetch(videoUrl);
-      if (!videoRes.ok) {
-        return new Response(JSON.stringify({ error: "Failed to download video" }), {
-          status: 502,
-          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-        });
-      }
-
-      const blob = await videoRes.blob();
-      file = new File([blob], "video.mp4", { type: blob.type || "video/mp4" });
-    } else {
-      // Direct file upload (for small files under 4.5MB)
-      const formData = await req.formData();
-      file = formData.get("file");
-    }
-
-    if (!file) {
-      return new Response(JSON.stringify({ error: "No file provided" }), {
-        status: 400,
-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-      });
-    }
-
-    // Forward to Whisper API
-    const whisperForm = new FormData();
-    whisperForm.append("file", file, file.name || "video.mp4");
-    whisperForm.append("model", "whisper-1");
-    whisperForm.append("language", "ko");
-    whisperForm.append("response_format", "text");
-
-    const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: whisperForm,
-    });
+    );
 
     if (!whisperRes.ok) {
       const errText = await whisperRes.text();
       console.error("[transcribe] Whisper error:", errText);
-      return new Response(JSON.stringify({ error: "Transcription failed" }), {
-        status: 502,
-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-      });
+      return res.status(502).json({ error: "Transcription failed" });
     }
 
     const transcript = await whisperRes.text();
-
-    return new Response(JSON.stringify({ transcript: transcript.trim() }), {
-      status: 200,
-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-    });
+    return res.status(200).json({ transcript: transcript.trim() });
   } catch (error) {
     console.error("[transcribe] Error:", error.message);
-    return new Response(JSON.stringify({ error: "Transcription failed" }), {
-      status: 500,
-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-    });
+    return res.status(500).json({ error: "Transcription failed" });
+  } finally {
+    // Clean up temp files
+    try { unlinkSync(inputPath); } catch {}
+    try { unlinkSync(outputPath); } catch {}
   }
 }
