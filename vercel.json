@@ -3,9 +3,6 @@
   "functions": {
     "api/analyze-video.js": {
       "maxDuration": 120
-    },
-    "api/transcribe.js": {
-      "maxDuration": 60
     }
   },
   "routes": [
