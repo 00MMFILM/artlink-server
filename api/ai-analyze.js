@@ -177,7 +177,7 @@ ${fewShot}${dynamicExamples}`;
 
     const msg = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 4096,
+      max_tokens: 8192,
       temperature: 1,
       system: systemPrompt,
       messages: [
@@ -188,7 +188,12 @@ ${fewShot}${dynamicExamples}`;
 
     // Prepend the prefill to the response
     const rawText = msg.content[0]?.text || "";
-    const analysis = "📌" + rawText;
+    let analysis = "📌" + rawText;
+
+    // If truncated, append closing so it doesn't end abruptly
+    if (msg.stop_reason === "max_tokens") {
+      analysis += "\n\n---\n(분석이 길어져 일부 생략되었습니다)";
+    }
 
     if (!analysis || analysis.trim().length < 10) {
       return res.status(500).json({ error: "Empty response from AI" });
