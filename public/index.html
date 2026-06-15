@@ -1,142 +1,1036 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ArtLink - 고객 지원</title>
+  <title>Artlink — Your AI Coach for Every Art Form</title>
+  <meta name="description" content="Record practice. Get AI feedback in seconds. Track how you grow across 7 art forms. Free on iPhone & Android.">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Artlink — Your AI Coach for Every Art Form">
+  <meta property="og:description" content="Record practice. Get AI feedback. Track your growth across 7 art forms.">
+  <meta property="og:url" content="https://artlink-server.vercel.app/launch">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #F0F0F5; color: #1C1C1E; line-height: 1.6; }
-    .header { background: linear-gradient(135deg, #FF2D78, #FF6BA1); padding: 48px 24px; text-align: center; color: white; }
-    .header h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
-    .header p { font-size: 16px; opacity: 0.9; }
-    .container { max-width: 680px; margin: 0 auto; padding: 24px 16px; }
-    .card { background: white; border-radius: 16px; padding: 24px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-    .card h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; color: #1C1C1E; }
-    .card h3 { font-size: 16px; font-weight: 600; margin: 16px 0 8px; color: #48484A; }
-    .card p, .card li { font-size: 15px; color: #48484A; line-height: 1.8; }
-    .card ul { padding-left: 20px; }
-    .card li { margin-bottom: 8px; }
-    .contact-btn { display: inline-block; background: #FF2D78; color: white; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-weight: 600; font-size: 16px; margin-top: 12px; }
-    .contact-btn:hover { background: #E0256A; }
-    .badge { display: inline-block; background: #FFF0F5; color: #FF2D78; padding: 4px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
-    .faq-item { border-top: 1px solid #E8E8ED; padding-top: 16px; margin-top: 16px; }
-    .faq-item:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
-    .faq-q { font-weight: 600; color: #1C1C1E; margin-bottom: 6px; }
-    .faq-a { color: #8E8E93; }
-    .footer { text-align: center; padding: 32px 16px; color: #AEAEB2; font-size: 13px; }
+    :root {
+      --bg: #07070D;
+      --bg-2: #0E0E1A;
+      --fg: #FAFAFC;
+      --fg-dim: rgba(250, 250, 252, 0.62);
+      --fg-faint: rgba(250, 250, 252, 0.42);
+      --line: rgba(255, 255, 255, 0.08);
+      --pink: #FF2D78;
+      --rose: #FF6BA1;
+      --violet: #7C5CFF;
+      --indigo: #5E5CE6;
+      --green: #30D158;
+      --amber: #FFB340;
+      --cyan: #64D2FF;
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.5;
+      overflow-x: hidden;
+      font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    }
+    a { color: inherit; text-decoration: none; }
+    .serif { font-family: 'Instrument Serif', serif; font-style: italic; font-weight: 400; }
+
+    /* ─── Noise overlay ─── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+      opacity: 0.03;
+      pointer-events: none;
+      z-index: 9999;
+      mix-blend-mode: overlay;
+    }
+
+    /* ─── Nav ─── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      padding: 16px 24px;
+      backdrop-filter: blur(16px) saturate(180%);
+      -webkit-backdrop-filter: blur(16px) saturate(180%);
+      background: rgba(7, 7, 13, 0.6);
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.3s;
+    }
+    nav.scrolled { border-bottom-color: var(--line); }
+    nav .nav-inner { max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
+    .logo { font-weight: 800; font-size: 18px; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; }
+    .logo-mark {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--pink), var(--violet));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 900;
+      box-shadow: 0 4px 12px rgba(255, 45, 120, 0.3);
+    }
+    .nav-cta {
+      padding: 10px 18px;
+      background: var(--fg);
+      color: var(--bg);
+      border-radius: 100px;
+      font-weight: 600;
+      font-size: 14px;
+      transition: transform 0.2s;
+    }
+    .nav-cta:hover { transform: scale(1.05); }
+
+    /* ─── Hero ─── */
+    .hero {
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 120px 24px 80px;
+      overflow: hidden;
+    }
+    .hero-bg {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(124, 92, 255, 0.25), transparent 70%),
+                  radial-gradient(ellipse 60% 40% at 50% 100%, rgba(255, 45, 120, 0.18), transparent 70%);
+      pointer-events: none;
+    }
+    .grid-bg {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(to right, rgba(255,255,255,0.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.04) 1px, transparent 1px);
+      background-size: 64px 64px;
+      mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, black 30%, transparent 80%);
+      -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, black 30%, transparent 80%);
+      pointer-events: none;
+    }
+    .orbs { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+    .orb { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.55; mix-blend-mode: screen; }
+    .orb-1 { width: 480px; height: 480px; background: var(--pink); top: -10%; left: -10%; animation: float-1 22s ease-in-out infinite; }
+    .orb-2 { width: 420px; height: 420px; background: var(--violet); top: 30%; right: -10%; animation: float-2 26s ease-in-out infinite; }
+    .orb-3 { width: 360px; height: 360px; background: var(--cyan); bottom: -10%; left: 30%; animation: float-3 30s ease-in-out infinite; }
+    @keyframes float-1 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(60px, 80px); } }
+    @keyframes float-2 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-80px, 40px); } }
+    @keyframes float-3 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(40px, -60px); } }
+
+    .hero-content { position: relative; z-index: 2; max-width: 880px; text-align: center; }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 8px 16px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 100px;
+      font-size: 13px; font-weight: 500;
+      margin-bottom: 32px;
+      backdrop-filter: blur(20px);
+      animation: fade-in-up 0.8s ease-out;
+    }
+    .hero-badge .dot {
+      width: 6px; height: 6px;
+      background: var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--green), 0 0 20px var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    .hero h1 {
+      font-size: clamp(48px, 9vw, 104px);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 0.95;
+      margin-bottom: 32px;
+      animation: fade-in-up 1s ease-out 0.1s both;
+    }
+    .hero h1 .gradient {
+      background: linear-gradient(135deg, var(--pink) 0%, var(--violet) 60%, var(--cyan) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p.lead {
+      font-size: clamp(18px, 2.2vw, 24px);
+      color: var(--fg-dim);
+      margin-bottom: 48px;
+      max-width: 640px;
+      margin-left: auto;
+      margin-right: auto;
+      line-height: 1.5;
+      animation: fade-in-up 1s ease-out 0.2s both;
+    }
+    .cta-row {
+      display: flex; gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+      animation: fade-in-up 1s ease-out 0.3s both;
+    }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 12px;
+      background: var(--fg);
+      color: var(--bg);
+      padding: 18px 32px;
+      border-radius: 100px;
+      font-weight: 700;
+      font-size: 16px;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 12px 40px rgba(255, 255, 255, 0.15);
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 50px rgba(255, 255, 255, 0.25); }
+    .btn-primary svg { width: 20px; height: 20px; }
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 18px 28px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 100px;
+      font-weight: 600;
+      font-size: 16px;
+      backdrop-filter: blur(10px);
+      transition: background 0.2s;
+    }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.12); }
+
+    .field-row {
+      display: flex; gap: 8px;
+      justify-content: center; flex-wrap: wrap;
+      margin-top: 56px;
+      animation: fade-in-up 1s ease-out 0.4s both;
+    }
+    .field-tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 100px;
+      font-size: 13px;
+      color: var(--fg-dim);
+    }
+
+    @keyframes fade-in-up {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── Phone mockup ─── */
+    .phone-section {
+      position: relative;
+      padding: 40px 24px 120px;
+      z-index: 2;
+    }
+    .phone-wrapper {
+      position: relative;
+      max-width: 360px;
+      margin: 0 auto;
+      animation: fade-in-up 1.2s ease-out 0.6s both;
+    }
+    .phone {
+      position: relative;
+      aspect-ratio: 9 / 19.5;
+      background: linear-gradient(135deg, #1a1a2e, #0f0f1e);
+      border-radius: 48px;
+      padding: 14px;
+      box-shadow:
+        0 0 0 2px rgba(255,255,255,0.08),
+        0 60px 120px -20px rgba(255, 45, 120, 0.3),
+        0 30px 60px -10px rgba(124, 92, 255, 0.2),
+        inset 0 0 0 1px rgba(255,255,255,0.05);
+    }
+    .phone::before {
+      content: '';
+      position: absolute;
+      top: 26px; left: 50%;
+      transform: translateX(-50%);
+      width: 120px; height: 36px;
+      background: #000;
+      border-radius: 24px;
+      z-index: 3;
+    }
+    .phone-screen {
+      position: relative;
+      width: 100%; height: 100%;
+      background: linear-gradient(180deg, #0A0A1A, #15152B);
+      border-radius: 36px;
+      overflow: hidden;
+      padding: 64px 20px 20px;
+    }
+    .phone-app-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 24px;
+    }
+    .phone-app-header .greeting { font-size: 13px; color: var(--fg-dim); }
+    .phone-app-header .greeting strong { color: var(--fg); display: block; font-size: 17px; font-weight: 700; }
+    .phone-avatar {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--pink), var(--violet));
+    }
+    .phone-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 14px;
+      margin-bottom: 10px;
+      animation: card-in 0.6s ease-out both;
+    }
+    .phone-card:nth-child(1) { animation-delay: 0.8s; }
+    .phone-card:nth-child(2) { animation-delay: 1.0s; }
+    .phone-card:nth-child(3) { animation-delay: 1.2s; }
+    @keyframes card-in {
+      from { opacity: 0; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    .phone-card .row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .phone-card .icon-sm {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--pink), var(--rose));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    }
+    .phone-card .meta { flex: 1; }
+    .phone-card .meta .title { font-size: 13px; font-weight: 600; }
+    .phone-card .meta .time { font-size: 10px; color: var(--fg-faint); }
+    .phone-card .body { font-size: 11px; color: var(--fg-dim); line-height: 1.4; }
+    .phone-chips { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+    .phone-chip {
+      font-size: 9px;
+      padding: 3px 8px;
+      background: rgba(255, 45, 120, 0.15);
+      border: 1px solid rgba(255, 45, 120, 0.3);
+      border-radius: 6px;
+      color: var(--rose);
+      font-weight: 500;
+    }
+
+    .typing-indicator {
+      display: inline-flex; gap: 3px;
+      padding: 6px 10px;
+      background: rgba(124, 92, 255, 0.15);
+      border-radius: 8px;
+      vertical-align: middle;
+    }
+    .typing-indicator span {
+      width: 4px; height: 4px;
+      background: var(--violet);
+      border-radius: 50%;
+      animation: typing 1.4s infinite;
+    }
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typing {
+      0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+      30% { opacity: 1; transform: translateY(-3px); }
+    }
+
+    /* ─── Sections ─── */
+    section { padding: 140px 24px; position: relative; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .eyebrow {
+      display: inline-block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--rose);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-size: clamp(36px, 6vw, 64px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+      margin-bottom: 20px;
+      max-width: 800px;
+    }
+    .section-title.center { margin-left: auto; margin-right: auto; text-align: center; }
+    .section-sub {
+      color: var(--fg-dim);
+      font-size: 19px;
+      max-width: 620px;
+      line-height: 1.5;
+    }
+    .section-sub.center { margin-left: auto; margin-right: auto; text-align: center; }
+
+    /* ─── Reveal on scroll ─── */
+    .reveal { opacity: 0; transform: translateY(40px); transition: opacity 0.8s ease-out, transform 0.8s ease-out; }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+    .reveal-stagger > * { opacity: 0; transform: translateY(30px); transition: opacity 0.6s ease-out, transform 0.6s ease-out; }
+    .reveal-stagger.visible > * { opacity: 1; transform: translateY(0); }
+    .reveal-stagger.visible > *:nth-child(1) { transition-delay: 0s; }
+    .reveal-stagger.visible > *:nth-child(2) { transition-delay: 0.1s; }
+    .reveal-stagger.visible > *:nth-child(3) { transition-delay: 0.2s; }
+    .reveal-stagger.visible > *:nth-child(4) { transition-delay: 0.3s; }
+    .reveal-stagger.visible > *:nth-child(5) { transition-delay: 0.4s; }
+    .reveal-stagger.visible > *:nth-child(6) { transition-delay: 0.5s; }
+
+    /* ─── Problem ─── */
+    .problem-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-top: 64px;
+    }
+    .problem-card {
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 24px;
+      padding: 36px;
+      transition: transform 0.4s, border-color 0.4s, background 0.4s;
+    }
+    .problem-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(255, 45, 120, 0.3);
+      background: rgba(255, 45, 120, 0.04);
+    }
+    .problem-card .quote-mark {
+      font-family: 'Instrument Serif', serif;
+      font-size: 60px;
+      line-height: 0.5;
+      color: var(--rose);
+      opacity: 0.4;
+      margin-bottom: 12px;
+    }
+    .problem-card h3 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      letter-spacing: -0.01em;
+    }
+    .problem-card p { color: var(--fg-dim); font-size: 15px; }
+
+    /* ─── Features bento ─── */
+    .bento {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 20px;
+      margin-top: 64px;
+    }
+    .bento-card {
+      grid-column: span 2;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 28px;
+      padding: 36px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.4s, border-color 0.4s;
+      min-height: 280px;
+    }
+    .bento-card:hover { transform: translateY(-6px); border-color: rgba(255, 255, 255, 0.18); }
+    .bento-card.large { grid-column: span 3; }
+    .bento-card.wide { grid-column: span 4; }
+    .bento-card.tall { grid-column: span 2; min-height: 380px; }
+    @media (max-width: 900px) {
+      .bento-card, .bento-card.large, .bento-card.wide, .bento-card.tall { grid-column: span 6; min-height: 240px; }
+    }
+    .bento-card h3 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      letter-spacing: -0.02em;
+    }
+    .bento-card p { color: var(--fg-dim); font-size: 15px; line-height: 1.6; }
+    .bento-card .icon-lg {
+      width: 56px; height: 56px;
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px;
+      margin-bottom: 24px;
+    }
+    .icon-pink { background: linear-gradient(135deg, rgba(255,45,120,0.25), rgba(255,107,161,0.15)); border: 1px solid rgba(255,45,120,0.3); }
+    .icon-violet { background: linear-gradient(135deg, rgba(124,92,255,0.25), rgba(94,92,230,0.15)); border: 1px solid rgba(124,92,255,0.3); }
+    .icon-cyan { background: linear-gradient(135deg, rgba(100,210,255,0.25), rgba(48,209,88,0.15)); border: 1px solid rgba(100,210,255,0.3); }
+    .icon-amber { background: linear-gradient(135deg, rgba(255,179,64,0.25), rgba(255,107,161,0.15)); border: 1px solid rgba(255,179,64,0.3); }
+    .icon-green { background: linear-gradient(135deg, rgba(48,209,88,0.25), rgba(100,210,255,0.15)); border: 1px solid rgba(48,209,88,0.3); }
+
+    .bento-disciplines {
+      background: linear-gradient(135deg, rgba(255,45,120,0.08), rgba(124,92,255,0.05));
+    }
+    .discipline-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 20px;
+    }
+    .discipline-item {
+      aspect-ratio: 1;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--fg-dim);
+      transition: transform 0.3s;
+    }
+    .discipline-item:hover { transform: scale(1.05); background: rgba(255, 255, 255, 0.1); }
+    .discipline-item .emoji { font-size: 22px; }
+
+    /* growth chart */
+    .growth-chart { margin-top: 24px; }
+    .chart-svg { width: 100%; height: 120px; }
+
+    /* language badge cloud */
+    .lang-cloud { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 20px; }
+    .lang-cloud .badge {
+      padding: 6px 12px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 100px;
+      font-size: 12px;
+    }
+
+    /* ─── How it works ─── */
+    .howto-section { background: linear-gradient(180deg, transparent, rgba(124,92,255,0.04), transparent); }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 32px;
+      margin-top: 80px;
+    }
+    .step { position: relative; }
+    .step-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 64px; height: 64px;
+      background: linear-gradient(135deg, var(--pink), var(--violet));
+      border-radius: 20px;
+      font-size: 26px; font-weight: 800;
+      margin-bottom: 24px;
+      box-shadow: 0 12px 32px -8px rgba(255, 45, 120, 0.5);
+    }
+    .step h3 { font-size: 22px; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.01em; }
+    .step p { color: var(--fg-dim); font-size: 15px; }
+
+    /* ─── Stats ─── */
+    .stats-section { padding: 100px 24px; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 40px;
+      max-width: 900px;
+      margin: 0 auto;
+      text-align: center;
+    }
+    .stat .num {
+      font-size: clamp(48px, 8vw, 80px);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      background: linear-gradient(135deg, var(--fg), var(--rose));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+    }
+    .stat .label { font-size: 14px; color: var(--fg-dim); font-weight: 500; }
+
+    /* ─── Privacy ─── */
+    .privacy-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-top: 64px;
+    }
+    .privacy-row {
+      display: flex; gap: 16px;
+      padding: 24px;
+      background: rgba(48, 209, 88, 0.04);
+      border: 1px solid rgba(48, 209, 88, 0.15);
+      border-radius: 20px;
+    }
+    .privacy-row .check {
+      flex-shrink: 0;
+      width: 32px; height: 32px;
+      background: var(--green);
+      color: var(--bg);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800;
+    }
+    .privacy-row h4 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+    .privacy-row p { color: var(--fg-dim); font-size: 14px; }
+
+    /* ─── Final CTA ─── */
+    .final {
+      text-align: center;
+      padding: 160px 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .final-bg {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(255, 45, 120, 0.15), transparent 70%);
+      pointer-events: none;
+    }
+    .final h2 {
+      position: relative; z-index: 1;
+      font-size: clamp(48px, 8vw, 96px);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      margin-bottom: 24px;
+    }
+    .final h2 .gradient {
+      background: linear-gradient(135deg, var(--rose), var(--violet));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .final p { position: relative; z-index: 1; color: var(--fg-dim); font-size: 19px; margin-bottom: 48px; }
+    .final .cta-row { position: relative; z-index: 1; }
+
+    /* ─── Footer ─── */
+    footer {
+      padding: 64px 24px 48px;
+      border-top: 1px solid var(--line);
+    }
+    .footer-inner {
+      max-width: 1200px; margin: 0 auto;
+      display: flex; flex-direction: column; gap: 32px;
+      align-items: center;
+    }
+    .footer-links {
+      display: flex; gap: 32px; flex-wrap: wrap; justify-content: center;
+    }
+    .footer-links a {
+      color: var(--fg-dim);
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--fg); }
+    .footer-meta {
+      color: var(--fg-faint);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 768px) {
+      section { padding: 80px 20px; }
+      .hero { padding: 100px 20px 60px; }
+      .phone-section { padding: 20px 20px 80px; }
+      .stats { gap: 24px; }
+      nav { padding: 12px 20px; }
+      .cta-row { flex-direction: column; align-items: center; gap: 12px; }
+      .btn-primary, .btn-secondary { width: 100%; max-width: 300px; justify-content: center; }
+    }
   </style>
 
   <!-- Vercel Web Analytics -->
   <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
-  <div class="header">
-    <h1>ArtLink</h1>
-    <p>예술가와 창작자를 위한 연습 노트 관리 앱</p>
-  </div>
 
-  <div class="container">
-    <!-- Support Contact -->
-    <div class="card">
-      <span class="badge">고객 지원</span>
-      <h2>도움이 필요하신가요?</h2>
-      <p>ArtLink 이용 중 문의사항이나 문제가 있으시면 언제든 연락해 주세요. 24시간 이내에 답변드리겠습니다.</p>
-      <a href="mailto:lcy1152@naver.com?subject=ArtLink%20%EB%AC%B8%EC%9D%98" class="contact-btn">이메일 문의하기</a>
-      <p style="margin-top: 12px; color: #8E8E93; font-size: 14px;">lcy1152@naver.com</p>
+  <!-- Nav -->
+  <nav id="nav">
+    <div class="nav-inner">
+      <div class="logo">
+        <div class="logo-mark">A</div>
+        <span>Artlink</span>
+      </div>
+      <a href="#download" class="nav-cta" onclick="event.preventDefault(); document.querySelector('.final').scrollIntoView({behavior:'smooth'});">Download</a>
     </div>
+  </nav>
 
-    <!-- FAQ -->
-    <div class="card">
-      <span class="badge">FAQ</span>
-      <h2>자주 묻는 질문</h2>
-
-      <div class="faq-item">
-        <p class="faq-q">Q: 앱이 정상적으로 작동하지 않아요.</p>
-        <p class="faq-a">A: 앱을 완전히 종료한 후 다시 실행해 주세요. 문제가 지속되면 이메일로 문의해 주세요.</p>
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-bg"></div>
+    <div class="grid-bg"></div>
+    <div class="orbs">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+    </div>
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="dot"></span>
+        <span>Now live on the App Store & Google Play</span>
       </div>
-
-      <div class="faq-item">
-        <p class="faq-q">Q: 계정을 삭제하고 싶어요.</p>
-        <p class="faq-a">A: 프로필 탭 > 계정 삭제에서 직접 삭제할 수 있습니다. 삭제 시 모든 데이터가 영구적으로 제거됩니다.</p>
+      <h1>
+        Your AI coach<br>
+        for <span class="gradient serif">every</span> art form
+      </h1>
+      <p class="lead">
+        Record practice. Get personalized AI feedback in seconds.
+        Track how you grow — across acting, music, dance, art, writing, and film.
+      </p>
+      <div class="cta-row">
+        <a href="https://apps.apple.com/app/id6752890224" class="btn-primary">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+          <span>App Store</span>
+        </a>
+        <a href="https://play.google.com/store/apps/details?id=com.mm00.artlink" class="btn-primary" style="background: rgba(255,255,255,0.08); color: var(--fg); box-shadow: none; border: 1px solid rgba(255,255,255,0.15);">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.199l2.302 1.33a1 1 0 0 1 0 1.724l-2.302 1.33-2.535-2.535 2.535-2.535zM5.864 3.458L16.8 9.79l-2.302 2.302-8.634-8.634z"/></svg>
+          <span>Google Play</span>
+        </a>
+        <a href="#features" class="btn-secondary">
+          <span>See how it works</span>
+          <span>↓</span>
+        </a>
       </div>
-
-      <div class="faq-item">
-        <p class="faq-q">Q: 부적절한 콘텐츠를 발견했어요.</p>
-        <p class="faq-a">A: 해당 게시물의 ··· 버튼을 눌러 신고해 주세요. 24시간 이내에 검토 후 조치합니다.</p>
+      <div style="margin-top: 16px; animation: fade-in-up 1s ease-out 0.35s both;">
+        <a href="https://www.producthunt.com/products/artlink?utm_source=badge-follow&utm_medium=badge&utm_souce=badge-artlink" target="_blank" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; background: rgba(255, 97, 84, 0.12); border: 1px solid rgba(255, 97, 84, 0.3); border-radius: 100px; font-size: 14px; font-weight: 600; color: #FF6154; transition: background 0.2s;">
+          <svg width="18" height="18" viewBox="0 0 40 40" fill="none"><path d="M20 40C31.046 40 40 31.046 40 20S31.046 0 20 0 0 8.954 0 20s8.954 20 20 20z" fill="#FF6154"/><path d="M22.667 20H17.333v-6.667h5.334a3.333 3.333 0 0 1 0 6.667zm0-13.333H10.667V33.333h6.666V26.667h5.334c5.522 0 10-4.478 10-10s-4.478-10-10-10z" fill="#fff"/></svg>
+          Follow on Product Hunt
+        </a>
       </div>
-
-      <div class="faq-item">
-        <p class="faq-q">Q: 다른 사용자를 차단하고 싶어요.</p>
-        <p class="faq-a">A: 해당 게시물의 ··· 버튼 > 작성자 차단을 선택하면 즉시 피드에서 제거됩니다.</p>
-      </div>
-
-      <div class="faq-item">
-        <p class="faq-q">Q: 앱은 무료인가요?</p>
-        <p class="faq-a">A: 네, ArtLink의 모든 기능은 무료로 이용 가능합니다.</p>
+      <div class="field-row">
+        <span class="field-tag">🎭 Acting</span>
+        <span class="field-tag">🎵 Music</span>
+        <span class="field-tag">💃 Dance</span>
+        <span class="field-tag">🎨 Art</span>
+        <span class="field-tag">✍️ Writing</span>
+        <span class="field-tag">🎬 Film</span>
       </div>
     </div>
+  </section>
 
-    <!-- Terms of Service -->
-    <div class="card" id="terms">
-      <span class="badge">이용약관</span>
-      <h2>서비스 이용약관</h2>
-      <p>최종 수정일: 2026년 3월 1일</p>
+  <!-- Phone mockup -->
+  <section class="phone-section">
+    <div class="phone-wrapper">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="phone-app-header">
+            <div class="greeting">
+              Good evening
+              <strong>Welcome back, Mira</strong>
+            </div>
+            <div class="phone-avatar"></div>
+          </div>
 
-      <h3>제1조 (목적)</h3>
-      <p>본 약관은 ArtLink(이하 "앱")가 제공하는 서비스의 이용 조건 및 절차, 이용자와 앱 간의 권리·의무 및 책임사항을 규정함을 목적으로 합니다.</p>
+          <div class="phone-card">
+            <div class="row">
+              <div class="icon-sm">🎭</div>
+              <div class="meta">
+                <div class="title">Audition take #3</div>
+                <div class="time">Today, 8:42 PM</div>
+              </div>
+            </div>
+            <div class="body">"Strong choice on the second beat — your stillness made the line land. Try cutting the breath before 'I know' to keep momentum."</div>
+            <div class="phone-chips">
+              <span class="phone-chip">stillness</span>
+              <span class="phone-chip">tempo</span>
+              <span class="phone-chip">subtext</span>
+            </div>
+          </div>
 
-      <h3>제2조 (서비스 개요)</h3>
-      <p>ArtLink는 예술가 및 창작자를 위한 연습 노트 관리, 매칭, 포트폴리오 관리 서비스를 제공합니다.</p>
+          <div class="phone-card">
+            <div class="row">
+              <div class="icon-sm" style="background: linear-gradient(135deg, var(--violet), var(--indigo));">🎵</div>
+              <div class="meta">
+                <div class="title">Vocal warmup</div>
+                <div class="time">Today, 7:15 PM</div>
+              </div>
+            </div>
+            <div class="body">Pitch stable on chest voice. Mix transition needs work around F4. <span class="typing-indicator"><span></span><span></span><span></span></span></div>
+          </div>
 
-      <h3>제3조 (이용자의 의무)</h3>
-      <ul>
-        <li>타인에 대한 괴롭힘, 위협, 차별적 발언 금지</li>
-        <li>불법적이거나 유해한 콘텐츠 게시 금지</li>
-        <li>음란물, 폭력적 콘텐츠, 혐오 발언 게시 금지</li>
-        <li>타인의 개인정보 무단 수집 및 유포 금지</li>
-        <li>스팸, 사기, 허위 정보 유포 금지</li>
-      </ul>
-
-      <h3>제4조 (콘텐츠 정책)</h3>
-      <p>본 앱은 부적절한 콘텐츠 및 악용 행위에 대해 무관용 정책을 적용합니다. 부적절한 콘텐츠가 발견될 경우 사전 통지 없이 삭제될 수 있습니다.</p>
-
-      <h3>제5조 (신고 및 차단)</h3>
-      <ul>
-        <li>이용자는 부적절한 콘텐츠를 앱 내 신고 기능을 통해 신고할 수 있습니다.</li>
-        <li>이용자는 다른 이용자를 차단할 수 있으며, 차단 시 해당 이용자의 콘텐츠가 즉시 피드에서 제거됩니다.</li>
-        <li>신고된 콘텐츠는 운영팀이 24시간 이내에 검토하고 조치합니다.</li>
-      </ul>
-
-      <h3>제6조 (제재)</h3>
-      <p>약관을 위반한 이용자는 콘텐츠 삭제, 서비스 이용 정지, 또는 계정 영구 정지 등의 제재를 받을 수 있습니다.</p>
+          <div class="phone-card">
+            <div class="row">
+              <div class="icon-sm" style="background: linear-gradient(135deg, var(--cyan), var(--green));">📈</div>
+              <div class="meta">
+                <div class="title">Weekly growth</div>
+                <div class="time">+18% this week</div>
+              </div>
+            </div>
+            <div class="body">Confidence trending up. Most improved: vocal projection.</div>
+          </div>
+        </div>
+      </div>
     </div>
+  </section>
 
-    <!-- Privacy Policy -->
-    <div class="card" id="privacy">
-      <span class="badge">개인정보 처리방침</span>
-      <h2>개인정보 처리방침</h2>
-      <p>최종 수정일: 2026년 3월 1일</p>
-
-      <h3>수집하는 개인정보</h3>
-      <p>이름, 이메일, 프로필 정보 (성별, 생년월일, 키, 특기 등)</p>
-
-      <h3>수집 목적</h3>
-      <p>서비스 제공 및 개선, 매칭 기능 지원</p>
-
-      <h3>보관 기간</h3>
-      <p>계정 삭제 시까지. 이용자는 언제든지 프로필 > 계정 삭제를 통해 모든 개인정보를 삭제할 수 있습니다.</p>
-
-      <h3>제3자 제공</h3>
-      <p>수집된 정보는 제3자에게 제공하지 않습니다.</p>
-
-      <h3>문의</h3>
-      <p>개인정보 관련 문의: <a href="mailto:lcy1152@naver.com">lcy1152@naver.com</a></p>
+  <!-- Problem -->
+  <section>
+    <div class="container">
+      <div class="reveal">
+        <div class="eyebrow">The reality</div>
+        <h2 class="section-title">
+          Practice is lonely.<br>
+          <span class="serif" style="color: var(--fg-dim);">Growth is invisible.</span>
+        </h2>
+        <p class="section-sub">Most artists train in silence with no real feedback loop. Sound familiar?</p>
+      </div>
+      <div class="problem-grid reveal-stagger">
+        <div class="problem-card">
+          <div class="quote-mark">"</div>
+          <h3>Was that take any good?</h3>
+          <p>You finish a rehearsal and have no idea what worked. No coach is watching at 1 AM.</p>
+        </div>
+        <div class="problem-card">
+          <div class="quote-mark">"</div>
+          <h3>Notes pile up. Patterns don't surface.</h3>
+          <p>You journal what happened, but you can't see the trajectory across weeks or months.</p>
+        </div>
+        <div class="problem-card">
+          <div class="quote-mark">"</div>
+          <h3>Coaches cost $80–200/hour.</h3>
+          <p>Most artists can't afford weekly feedback. So they go without.</p>
+        </div>
+      </div>
     </div>
-  </div>
+  </section>
 
-  <div class="footer">
-    <p>&copy; 2026 ArtLink. All rights reserved.</p>
-  </div>
+  <!-- Features bento -->
+  <section id="features">
+    <div class="container">
+      <div class="reveal">
+        <div class="eyebrow center" style="text-align: center; display: block;">What's inside</div>
+        <h2 class="section-title center">An AI coach that <span class="gradient serif" style="background: linear-gradient(135deg, var(--rose), var(--violet)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">listens</span></h2>
+        <p class="section-sub center">Built from the ground up for artists. One app, every art form.</p>
+      </div>
+
+      <div class="bento reveal-stagger">
+        <!-- Disciplines (large) -->
+        <div class="bento-card large bento-disciplines">
+          <h3>7 art forms,<br>one toolkit.</h3>
+          <p>Each discipline gets its own AI model — not generic GPT.</p>
+          <div class="discipline-grid">
+            <div class="discipline-item"><span class="emoji">🎭</span><span>Acting</span></div>
+            <div class="discipline-item"><span class="emoji">🎵</span><span>Music</span></div>
+            <div class="discipline-item"><span class="emoji">💃</span><span>Dance</span></div>
+            <div class="discipline-item"><span class="emoji">🎨</span><span>Art</span></div>
+            <div class="discipline-item"><span class="emoji">✍️</span><span>Writing</span></div>
+            <div class="discipline-item"><span class="emoji">🎬</span><span>Film</span></div>
+            <div class="discipline-item"><span class="emoji">📷</span><span>Photo</span></div>
+            <div class="discipline-item" style="background: rgba(255,45,120,0.1);"><span class="emoji">+</span><span>more</span></div>
+          </div>
+        </div>
+
+        <!-- Multimodal capture -->
+        <div class="bento-card large">
+          <div class="icon-lg icon-pink">🎤</div>
+          <h3>Capture anything.</h3>
+          <p>Voice, video, photos, scripts, sheet music — Artlink reads it all and gives feedback in your language.</p>
+        </div>
+
+        <!-- Growth (wide) -->
+        <div class="bento-card wide">
+          <div class="icon-lg icon-cyan">📈</div>
+          <h3>Watch yourself grow, week by week.</h3>
+          <p>Strengths, blind spots, what to work on next. Built like a coach who actually remembers you.</p>
+          <div class="growth-chart">
+            <svg class="chart-svg" viewBox="0 0 400 120" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="g1" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stop-color="#FF6BA1" stop-opacity="0.6"/>
+                  <stop offset="100%" stop-color="#FF6BA1" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <path d="M0,90 L50,80 L100,85 L150,70 L200,60 L250,45 L300,50 L350,30 L400,20 L400,120 L0,120 Z" fill="url(#g1)"/>
+              <path d="M0,90 L50,80 L100,85 L150,70 L200,60 L250,45 L300,50 L350,30 L400,20" fill="none" stroke="#FF6BA1" stroke-width="2.5"/>
+              <circle cx="400" cy="20" r="5" fill="#FF6BA1"/>
+              <circle cx="400" cy="20" r="10" fill="#FF6BA1" opacity="0.3"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Languages -->
+        <div class="bento-card">
+          <div class="icon-lg icon-violet">🌍</div>
+          <h3>10 languages,<br>day one.</h3>
+          <p>Auto-detected from your device.</p>
+          <div class="lang-cloud">
+            <span class="badge">EN</span>
+            <span class="badge">한국어</span>
+            <span class="badge">日本語</span>
+            <span class="badge">中文</span>
+            <span class="badge">繁中</span>
+            <span class="badge">Tiếng Việt</span>
+            <span class="badge">ภาษาไทย</span>
+            <span class="badge">Bahasa</span>
+            <span class="badge">العربية</span>
+            <span class="badge">Español</span>
+          </div>
+        </div>
+
+        <!-- Smart summaries -->
+        <div class="bento-card">
+          <div class="icon-lg icon-amber">🎯</div>
+          <h3>Smart zoom-level reading.</h3>
+          <p>Glance at keywords. Expand to one-line. Then read the full coaching note. Built for fast review.</p>
+        </div>
+
+        <!-- Privacy -->
+        <div class="bento-card wide" style="background: linear-gradient(135deg, rgba(48,209,88,0.06), transparent);">
+          <div class="icon-lg icon-green">🔒</div>
+          <h3>Your work stays yours.</h3>
+          <p>No video or audio is stored on our servers. Only the analysis text is kept. No selling data. Free, with optional rewarded ads.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="howto-section">
+    <div class="container">
+      <div class="reveal">
+        <div class="eyebrow center" style="text-align: center; display: block;">How it works</div>
+        <h2 class="section-title center">Three steps. <span class="serif" style="color: var(--fg-dim);">Two minutes.</span></h2>
+        <p class="section-sub center">From rehearsal to insight, faster than journaling by hand.</p>
+      </div>
+      <div class="steps reveal-stagger">
+        <div class="step">
+          <div class="step-num">1</div>
+          <h3>Record</h3>
+          <p>Drop in a voice take, a video clip, a sketch, or a script. Add a quick note.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <h3>Analyze</h3>
+          <p>Tap analyze. Get a coaching note tuned to your discipline in seconds.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <h3>Track</h3>
+          <p>Watch your trajectory build week by week. Share a growth card when you want.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats -->
+  <section class="stats-section">
+    <div class="container reveal">
+      <div class="stats">
+        <div class="stat">
+          <div class="num">7</div>
+          <div class="label">Art forms covered</div>
+        </div>
+        <div class="stat">
+          <div class="num">10</div>
+          <div class="label">Languages on day one</div>
+        </div>
+        <div class="stat">
+          <div class="num">∞</div>
+          <div class="label">Practice sessions, free</div>
+        </div>
+        <div class="stat">
+          <div class="num">0</div>
+          <div class="label">Files stored on our servers</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Privacy -->
+  <section>
+    <div class="container">
+      <div class="reveal">
+        <div class="eyebrow">No fine print</div>
+        <h2 class="section-title">Privacy is the <span class="serif" style="color: var(--green);">whole point.</span></h2>
+        <p class="section-sub">Your practice is personal. We treat it that way.</p>
+      </div>
+      <div class="privacy-grid reveal-stagger">
+        <div class="privacy-row">
+          <div class="check">✓</div>
+          <div>
+            <h4>No video or audio stored</h4>
+            <p>Files are sent for analysis, then deleted. Only the text result is kept.</p>
+          </div>
+        </div>
+        <div class="privacy-row">
+          <div class="check">✓</div>
+          <div>
+            <h4>You own your notes</h4>
+            <p>Delete your account anytime. Everything is removed permanently.</p>
+          </div>
+        </div>
+        <div class="privacy-row">
+          <div class="check">✓</div>
+          <div>
+            <h4>No data sold to third parties</h4>
+            <p>Ever. That is not how this is going to work.</p>
+          </div>
+        </div>
+        <div class="privacy-row">
+          <div class="check">✓</div>
+          <div>
+            <h4>Free, with optional rewarded ads</h4>
+            <p>Core features are free. AI quotas can be extended by watching an opt-in ad.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <section class="final">
+    <div class="final-bg"></div>
+    <h2>Train smarter.<br><span class="gradient serif">Grow visibly.</span></h2>
+    <p>Free to download. Available worldwide on iPhone & Android.</p>
+    <div class="cta-row">
+      <a href="https://apps.apple.com/app/id6752890224" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+        <span>App Store</span>
+      </a>
+      <a href="https://play.google.com/store/apps/details?id=com.mm00.artlink" class="btn-primary" style="background: rgba(255,255,255,0.08); color: var(--fg); box-shadow: none; border: 1px solid rgba(255,255,255,0.15);">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.199l2.302 1.33a1 1 0 0 1 0 1.724l-2.302 1.33-2.535-2.535 2.535-2.535zM5.864 3.458L16.8 9.79l-2.302 2.302-8.634-8.634z"/></svg>
+        <span>Google Play</span>
+      </a>
+    </div>
+    <!-- Product Hunt -->
+    <div style="margin-top: 32px; position: relative; z-index: 1;">
+      <a href="https://www.producthunt.com/products/artlink?utm_source=badge-follow&utm_medium=badge&utm_souce=badge-artlink" target="_blank" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; background: rgba(255, 97, 84, 0.12); border: 1px solid rgba(255, 97, 84, 0.3); border-radius: 100px; font-size: 14px; font-weight: 600; color: #FF6154; transition: background 0.2s;">
+        <svg width="20" height="20" viewBox="0 0 40 40" fill="none"><path d="M20 40C31.046 40 40 31.046 40 20S31.046 0 20 0 0 8.954 0 20s8.954 20 20 20z" fill="#FF6154"/><path d="M22.667 20H17.333v-6.667h5.334a3.333 3.333 0 0 1 0 6.667zm0-13.333H10.667V33.333h6.666V26.667h5.334c5.522 0 10-4.478 10-10s-4.478-10-10-10z" fill="#fff"/></svg>
+        Follow on Product Hunt
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-inner">
+      <div class="logo">
+        <div class="logo-mark">A</div>
+        <span>Artlink</span>
+      </div>
+      <div class="footer-links">
+        <a href="/">Support</a>
+        <a href="/#privacy">Privacy</a>
+        <a href="/#terms">Terms</a>
+        <a href="mailto:lcy1152@naver.com">Contact</a>
+      </div>
+      <div class="footer-meta">
+        © 2026 Artlink · Made with care for artists everywhere
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Nav scroll effect
+    const nav = document.getElementById('nav');
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 20) nav.classList.add('scrolled');
+      else nav.classList.remove('scrolled');
+    });
+
+    // Reveal on scroll
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          io.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.15 });
+    document.querySelectorAll('.reveal, .reveal-stagger').forEach((el) => io.observe(el));
+  </script>
 </body>
 </html>
