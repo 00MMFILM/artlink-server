@@ -5,6 +5,14 @@
       "maxDuration": 120
     }
   },
+  "redirects": [
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "art-link.kr" }],
+      "destination": "/launch",
+      "permanent": false
+    }
+  ],
   "routes": [
     {
       "src": "/api/(.*)",
