@@ -173,18 +173,34 @@ export default async function handler(req, res) {
 - 전문 용어를 사용할 때는 괄호 안에 쉬운 설명을 덧붙이세요
 - 요청된 형식(📌💪🎯🎭🎨💡📈🔜)을 반드시 따르되, 각 섹션 사이에 빈 줄을 넣어 가독성을 높이세요
 
-${fewShot}${dynamicExamples}`;
+${fewShot}`;
+
+    // 프롬프트 캐싱: 고정 부분(역할+규칙+few-shot)은 cache_control로 캐싱,
+    // 동적 예시(5분마다 바뀜)는 브레이크포인트 뒤에 둬서 캐시를 깨지 않게 함
+    const systemBlocks = [
+      {
+        type: "text",
+        text: systemPrompt,
+        cache_control: { type: "ephemeral" },
+      },
+    ];
+    if (dynamicExamples) {
+      systemBlocks.push({ type: "text", text: dynamicExamples });
+    }
 
     const msg = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 8192,
       temperature: 1,
-      system: systemPrompt,
+      system: systemBlocks,
       messages: [
         { role: "user", content: prompt },
         { role: "assistant", content: "📌" },
       ],
     });
+
+    // 캐시 동작 및 비용 모니터링용
+    console.log("[ai-analyze] usage:", JSON.stringify(msg.usage));
 
     // Prepend the prefill to the response
     const rawText = msg.content[0]?.text || "";
