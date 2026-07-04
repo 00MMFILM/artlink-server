@@ -188,6 +188,48 @@ ${fewShot}`;
       systemBlocks.push({ type: "text", text: dynamicExamples });
     }
 
+    const wantsStream = req.query && (req.query.stream === "1" || req.query.stream === "true");
+
+    // ── 스트리밍 경로 (앱이 ?stream=1 로 요청) ──
+    // 청크 텍스트를 그대로 흘려보냄. 앱은 XHR onprogress로 누적 수신.
+    // 모델/프롬프트/길이 동일 → 품질 손실 없음, 체감 대기만 감소.
+    if (wantsStream) {
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("X-Accel-Buffering", "no");
+      res.write("📌"); // prefill 먼저 전송
+      let full = "📌";
+      try {
+        const stream = await client.messages.stream({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 8192,
+          temperature: 1,
+          system: systemBlocks,
+          messages: [
+            { role: "user", content: prompt },
+            { role: "assistant", content: "📌" },
+          ],
+        });
+        for await (const event of stream) {
+          if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+            res.write(event.delta.text);
+            full += event.delta.text;
+          }
+        }
+        const finalMsg = await stream.finalMessage();
+        console.log("[ai-analyze] stream usage:", JSON.stringify(finalMsg.usage));
+        if (finalMsg.stop_reason === "max_tokens") {
+          res.write("\n\n---\n(분석이 길어져 일부 생략되었습니다)");
+        }
+      } catch (streamErr) {
+        console.error("[ai-analyze] stream error:", streamErr.message);
+        // 스트림 도중 실패 — 지금까지 받은 것만이라도 전달하고 종료
+        if (full.trim().length < 10) res.write("\n\n(AI 분석 중 오류가 발생했습니다)");
+      }
+      return res.end();
+    }
+
+    // ── 비스트리밍 경로 (구버전 앱 호환) ──
     const msg = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 8192,

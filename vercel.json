@@ -3,6 +3,9 @@
   "functions": {
     "api/analyze-video.js": {
       "maxDuration": 120
+    },
+    "api/ai-analyze.js": {
+      "maxDuration": 60
     }
   },
   "redirects": [
