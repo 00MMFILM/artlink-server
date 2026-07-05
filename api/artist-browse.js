@@ -27,9 +27,18 @@ export default async function handler(req, res) {
     const { data, error } = await query;
     if (error) throw error;
 
+    // 품질 필터: 검증/활동 없는 "빈 껍데기"(이메일도 노트도 없음) 제외.
+    // 기업이 연락할 수 있거나(이메일) 실제 활동(노트>0)이 있는 프로필만 노출.
+    const quality = (data || []).filter((r) => {
+      const hasEmail = !!(r.email && String(r.email).includes("@"));
+      const hasActivity = (r.notes_count || 0) > 0;
+      const hasPhotos = Array.isArray(r.photos) && r.photos.length > 0;
+      return hasEmail || hasActivity || hasPhotos;
+    });
+
     // 중복 제거 (user_id → name), 앱 로직과 동일
     const byUserId = new Map();
-    for (const row of data) {
+    for (const row of quality) {
       if (!row.user_id) continue;
       const ex = byUserId.get(row.user_id);
       if (!ex || (row.updated_at || "") > (ex.updated_at || "")) byUserId.set(row.user_id, row);
