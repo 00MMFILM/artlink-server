@@ -14,6 +14,21 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: "ownership verification failed" });
   }
 
+  // 사진만 부분 업데이트 (전체 프로필 덮어쓰기 방지)
+  if (profile._photosOnly) {
+    try {
+      const { error } = await supabase
+        .from("artist_profiles")
+        .update({ photos: profile.photos || [], photo_url: profile.photoUrl || null })
+        .eq("user_id", userId);
+      if (error) throw error;
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      console.error("[profile-sync photos]", e.message);
+      return res.status(500).json({ error: "photo sync failed" });
+    }
+  }
+
   const p = profile;
   const row = {
     user_id: userId,
