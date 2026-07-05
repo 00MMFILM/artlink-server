@@ -27,9 +27,17 @@ export default async function handler(req, res) {
     const { data, error } = await query;
     if (error) throw error;
 
-    // 품질 필터: 검증/활동 없는 "빈 껍데기"(이메일도 노트도 없음) 제외.
-    // 기업이 연락할 수 있거나(이메일) 실제 활동(노트>0)이 있는 프로필만 노출.
+    // ① 가입(로그인) 계정만 노출: auth_user_id 있는 users의 프로필만.
+    const { data: authUsers } = await supabase
+      .from("users")
+      .select("id")
+      .not("auth_user_id", "is", null)
+      .limit(5000);
+    const signedUp = new Set((authUsers || []).map((u) => u.id));
+
+    // ② 품질 필터: 빈 껍데기(이메일·활동·사진 모두 없음) 제외.
     const quality = (data || []).filter((r) => {
+      if (!signedUp.has(r.user_id)) return false; // 미가입 게스트 제외
       const hasEmail = !!(r.email && String(r.email).includes("@"));
       const hasActivity = (r.notes_count || 0) > 0;
       const hasPhotos = Array.isArray(r.photos) && r.photos.length > 0;
