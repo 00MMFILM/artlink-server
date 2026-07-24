@@ -1,5 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
+import {
+  checkAppToken,
+  rejectAppToken,
+  identifyUser,
+  checkTextQuota,
+  consumeText,
+} from "./_usage.js";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -130,7 +137,7 @@ const FEW_SHOT_EXAMPLES = {
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-App-Token, Authorization");
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -142,6 +149,22 @@ export default async function handler(req, res) {
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: "API key not configured" });
+  }
+
+  if (!checkAppToken(req)) return rejectAppToken(res);
+
+  // 사용량 판정 — 식별된 유저만 (구버전 앱은 Authorization 미전송 → 통과)
+  const user = await identifyUser(req);
+  if (user) {
+    const quota = await checkTextQuota(user.id);
+    if (!quota.allowed) {
+      return res.status(429).json({
+        error: "quota_exceeded",
+        type: "text_daily",
+        used: quota.used,
+        max: quota.max,
+      });
+    }
   }
 
   try {
@@ -168,7 +191,7 @@ export default async function handler(req, res) {
 - 절대로 사용자에게 추가 정보를 요청하거나 질문하지 마세요
 - 절대로 마크다운 헤딩(#, ##), 볼드(**), 목록(-)을 사용하지 마세요. 이모지 섹션 구분과 일반 텍스트만 사용하세요
 - 노트가 짧더라도 맥락을 추론하여 전문적으로 분석하세요
-- 피드백은 반드시 1500-2000자 이상이어야 합니다. 각 섹션에서 2-4문장으로 깊이 있게 분석하세요
+- 피드백은 1200-1800자로 작성하세요. 2000자를 절대 넘기지 마세요. 각 섹션 2-3문장으로 밀도 있게 분석하세요 — 길이보다 구체성이 우선입니다
 - 사용자의 롤모델, 관심 분야, 경력 정보가 있으면 이를 피드백에 적극 연결하세요
 - 전문 용어를 사용할 때는 괄호 안에 쉬운 설명을 덧붙이세요
 - 요청된 형식(📌💪🎯🎭🎨💡📈🔜)을 반드시 따르되, 각 섹션 사이에 빈 줄을 넣어 가독성을 높이세요
@@ -234,6 +257,7 @@ ${fewShot}`;
         if (finalMsg.stop_reason === "max_tokens") {
           res.write("\n\n---\n(분석이 길어져 일부 생략되었습니다)");
         }
+        if (user) consumeText(user.id); // 성공 시에만 카운트 (fire-and-forget)
       } catch (streamErr) {
         console.error("[ai-analyze] stream error:", streamErr.message);
         // 스트림 도중 실패 — 지금까지 받은 것만이라도 전달하고 종료
@@ -270,6 +294,7 @@ ${fewShot}`;
       return res.status(500).json({ error: "Empty response from AI" });
     }
 
+    if (user) consumeText(user.id); // 성공 시에만 카운트 (fire-and-forget)
     return res.status(200).json({ analysis });
   } catch (error) {
     console.error("[ai-analyze] Error:", error.message, error.status, error.body);

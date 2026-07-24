@@ -1,4 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
+import {
+  checkAppToken,
+  rejectAppToken,
+  identifyUser,
+  checkVideoQuota,
+  consumeVideo,
+} from "./_usage.js";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -41,13 +48,29 @@ const VIDEO_FEW_SHOT = {
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-App-Token, Authorization");
 
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: "API key not configured" });
+  }
+
+  if (!checkAppToken(req)) return rejectAppToken(res);
+
+  // 영상 체험 판정 — 식별된 유저만 (구버전 앱은 Authorization 미전송 → 통과)
+  const user = await identifyUser(req);
+  if (user) {
+    const quota = await checkVideoQuota(user.id);
+    if (!quota.allowed) {
+      return res.status(429).json({
+        error: "quota_exceeded",
+        type: "video_trial",
+        used: quota.used,
+        max: quota.max,
+      });
+    }
   }
 
   try {
@@ -71,7 +94,7 @@ export default async function handler(req, res) {
 - 음성 전사가 있으면 대사 전달력, 음성 톤, 리듬 등도 분석에 포함하세요
 - 음성 전사가 없으면 영상 프레임의 시각적 요소만으로 분석하세요. 전사가 없다는 사실을 절대 언급하지 마세요. 🎤 섹션은 영상에서 관찰되는 음성/사운드 관련 시각적 단서(입 모양, 호흡, 발성 자세 등)를 기반으로 작성하세요
 - 시간 순서에 따른 흐름 변화를 관찰하세요
-- 피드백은 1500-2000자 이상이어야 합니다. 각 섹션에서 2-4문장으로 깊이 있게 분석하세요
+- 피드백은 1200-1800자로 작성하세요. 2000자를 절대 넘기지 마세요. 각 섹션 2-3문장으로 밀도 있게 분석하세요 — 길이보다 구체성이 우선입니다
 - 요청된 형식(📌💪🎯🎭🎤📈🔜)을 반드시 따르되, 각 섹션 사이에 빈 줄을 넣으세요
 
 ${fewShot}`;
@@ -133,6 +156,7 @@ ${fewShot}`;
       return res.status(500).json({ error: "Empty response from AI" });
     }
 
+    if (user) consumeVideo(user.id); // 성공 시에만 카운트 (fire-and-forget)
     return res.status(200).json({ analysis });
   } catch (error) {
     console.error("[analyze-video] Error:", error.message);
