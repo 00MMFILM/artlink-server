@@ -60,7 +60,9 @@ export default async function handler(req, res) {
       "audio.mp3"
     );
     formData.append("model", "whisper-1");
-    formData.append("language", "ko");
+    // 언어: 쿼리로 지정 가능(?lang=ko 등). 미지정 시 Whisper 자동 감지 — 외국어 음성 지원
+    const langParam = (req.query && req.query.lang) || "";
+    if (langParam && langParam !== "auto") formData.append("language", langParam);
     formData.append("response_format", "text");
 
     const whisperRes = await fetch(
