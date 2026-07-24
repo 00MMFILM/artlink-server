@@ -99,13 +99,21 @@ ${fewShot}`;
     if (transcript) {
       userText += `\n\n[음성 전사]\n${transcript}`;
     }
+
+    // 비한국어 요청 감지 → 응답 언어 강제 (한국어 few-shot 지배 방지)
+    const hangulCount = (prompt.match(/[가-힣]/g) || []).length;
+    const latinCount = (prompt.match(/[A-Za-z]/g) || []).length;
+    const isNonKorean = hangulCount + latinCount > 30 && hangulCount / (hangulCount + latinCount) < 0.15;
+    const languageOverride = isNonKorean
+      ? "\n\nCRITICAL OVERRIDE — RESPONSE LANGUAGE: The user's request is NOT in Korean. Write your ENTIRE feedback in the same language as the user's request (English → English, Indonesian → Indonesian, etc.). Do NOT write in Korean. Keep the emoji section format."
+      : "";
     content.push({ type: "text", text: userText });
 
     const msg = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 8192,
       temperature: 1,
-      system: systemPrompt,
+      system: systemPrompt + languageOverride,
       messages: [
         { role: "user", content },
         { role: "assistant", content: "📌" },

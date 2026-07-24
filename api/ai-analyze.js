@@ -188,6 +188,17 @@ ${fewShot}`;
       systemBlocks.push({ type: "text", text: dynamicExamples });
     }
 
+    // 비한국어 노트 감지 → 응답 언어 강제 (한국어 few-shot이 지배적이라 명시 블록 필요)
+    const hangulCount = (prompt.match(/[가-힣]/g) || []).length;
+    const latinCount = (prompt.match(/[A-Za-z]/g) || []).length;
+    const isNonKorean = hangulCount + latinCount > 30 && hangulCount / (hangulCount + latinCount) < 0.15;
+    if (isNonKorean) {
+      systemBlocks.push({
+        type: "text",
+        text: "CRITICAL OVERRIDE — RESPONSE LANGUAGE: The user's note is NOT written in Korean. You MUST write your ENTIRE feedback in the same language as the user's note (English note → English feedback, Indonesian → Indonesian, Japanese → Japanese, etc.). Do NOT write in Korean under any circumstances. The Korean examples above are for structure and quality reference only — keep the emoji section format, but write every sentence in the user's language.",
+      });
+    }
+
     const wantsStream = req.query && (req.query.stream === "1" || req.query.stream === "true");
 
     // ── 스트리밍 경로 (앱이 ?stream=1 로 요청) ──
