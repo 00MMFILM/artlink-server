@@ -102,8 +102,10 @@ ${fewShot}`;
 
     // 비한국어 요청 감지 → 응답 언어 강제 (한국어 few-shot 지배 방지)
     const hangulCount = (prompt.match(/[가-힣]/g) || []).length;
+    const cjkCount = (prompt.match(/[ぁ-んァ-ヶ一-龯]/g) || []).length; // 일본어·중국어
     const latinCount = (prompt.match(/[A-Za-z]/g) || []).length;
-    const isNonKorean = hangulCount + latinCount > 30 && hangulCount / (hangulCount + latinCount) < 0.15;
+    const langTotal = hangulCount + cjkCount + latinCount;
+    const isNonKorean = langTotal > 30 && hangulCount / langTotal < 0.15;
     const languageOverride = isNonKorean
       ? "\n\nCRITICAL OVERRIDE — RESPONSE LANGUAGE: The user's request is NOT in Korean. Write your ENTIRE feedback in the same language as the user's request (English → English, Indonesian → Indonesian, etc.). Do NOT write in Korean. Keep the emoji section format."
       : "";

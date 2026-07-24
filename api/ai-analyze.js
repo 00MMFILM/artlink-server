@@ -190,8 +190,10 @@ ${fewShot}`;
 
     // 비한국어 노트 감지 → 응답 언어 강제 (한국어 few-shot이 지배적이라 명시 블록 필요)
     const hangulCount = (prompt.match(/[가-힣]/g) || []).length;
+    const cjkCount = (prompt.match(/[ぁ-んァ-ヶ一-龯]/g) || []).length; // 일본어·중국어
     const latinCount = (prompt.match(/[A-Za-z]/g) || []).length;
-    const isNonKorean = hangulCount + latinCount > 30 && hangulCount / (hangulCount + latinCount) < 0.15;
+    const langTotal = hangulCount + cjkCount + latinCount;
+    const isNonKorean = langTotal > 30 && hangulCount / langTotal < 0.15;
     if (isNonKorean) {
       systemBlocks.push({
         type: "text",
