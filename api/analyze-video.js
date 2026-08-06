@@ -23,15 +23,14 @@ const PROMPT_VERSION = "2026-08-06.2";
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com";
-const GEMINI_MAX_BYTES = 150 * 1024 * 1024; // 150MB 초과는 프레임 경로로
+const GEMINI_MAX_BYTES = 1024 * 1024 * 1024; // 1GB (1080p 5분 여유) — 초과 시 프레임 경로로
 
 async function geminiUploadVideo(videoUrl) {
-  const vres = await fetch(videoUrl);
-  if (!vres.ok) throw new Error(`video fetch ${vres.status}`);
-  const bytes = Buffer.from(await vres.arrayBuffer());
-  if (bytes.length === 0 || bytes.length > GEMINI_MAX_BYTES) {
-    throw new Error(`video size unsupported: ${bytes.length}`);
-  }
+  // 크기는 HEAD로 먼저 확인 (본문은 스트리밍으로 흘려보내 메모리에 안 올림)
+  const head = await fetch(videoUrl, { method: "HEAD" });
+  if (!head.ok) throw new Error(`video HEAD ${head.status}`);
+  const size = Number(head.headers.get("content-length") || 0);
+  if (!size || size > GEMINI_MAX_BYTES) throw new Error(`video size unsupported: ${size}`);
 
   // Files API resumable 업로드 (start → upload+finalize)
   const start = await fetch(`${GEMINI_BASE}/upload/v1beta/files?key=${GEMINI_KEY}`, {
@@ -39,7 +38,7 @@ async function geminiUploadVideo(videoUrl) {
     headers: {
       "X-Goog-Upload-Protocol": "resumable",
       "X-Goog-Upload-Command": "start",
-      "X-Goog-Upload-Header-Content-Length": String(bytes.length),
+      "X-Goog-Upload-Header-Content-Length": String(size),
       "X-Goog-Upload-Header-Content-Type": "video/mp4",
       "Content-Type": "application/json",
     },
@@ -48,13 +47,18 @@ async function geminiUploadVideo(videoUrl) {
   const uploadUrl = start.headers.get("x-goog-upload-url");
   if (!uploadUrl) throw new Error(`gemini upload start ${start.status}`);
 
+  // Supabase → Gemini 스트리밍 릴레이 (버퍼링 없음)
+  const vres = await fetch(videoUrl);
+  if (!vres.ok || !vres.body) throw new Error(`video fetch ${vres.status}`);
   const up = await fetch(uploadUrl, {
     method: "POST",
     headers: {
+      "Content-Length": String(size),
       "X-Goog-Upload-Offset": "0",
       "X-Goog-Upload-Command": "upload, finalize",
     },
-    body: bytes,
+    body: vres.body,
+    duplex: "half", // Node fetch 스트림 바디 필수 옵션
   });
   if (!up.ok) throw new Error(`gemini upload ${up.status}`);
   let file = (await up.json()).file;
