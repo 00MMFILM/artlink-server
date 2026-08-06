@@ -1,5 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { createClient } from "@supabase/supabase-js";
 import {
   checkAppToken,
   rejectAppToken,
@@ -10,52 +9,13 @@ import {
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// Supabase client for dynamic few-shot examples
-const supabase =
-  process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
-    ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
-    : null;
+// 생성 메타 — 노트에 함께 저장되어 나중에 품질 비교·학습 데이터 필터의 기준이 된다
+const MODEL = "claude-sonnet-4-6";
+const PROMPT_VERSION = "2026-08-06.1";
 
-// Cache dynamic examples (5 min TTL)
-const exampleCache = new Map();
-const CACHE_TTL = 5 * 60 * 1000;
-
-async function getDynamicExamples(field) {
-  if (!supabase) return "";
-
-  const cacheKey = field || "general";
-  const cached = exampleCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.value;
-
-  try {
-    const { data, error } = await supabase
-      .from("training_data")
-      .select("note_content, ai_feedback")
-      .eq("field", field || "acting")
-      .order("created_at", { ascending: false })
-      .limit(20);
-
-    if (error || !data || data.length === 0) return "";
-
-    // Pick 2 random examples from recent 20 for variety
-    const shuffled = data.sort(() => Math.random() - 0.5);
-    const picked = shuffled.slice(0, 2);
-
-    const examples = picked
-      .map((ex, i) => {
-        const note = ex.note_content.slice(0, 300);
-        const feedback = ex.ai_feedback.slice(0, 800);
-        return `[실제 노트 ${i + 1}]\n${note}...\n\n[피드백 ${i + 1}]\n${feedback}...`;
-      })
-      .join("\n\n---\n\n");
-
-    const result = `\n\n[추가 참고 예시 — 실제 ${cacheKey} 분야 노트와 피드백]\n${examples}`;
-    exampleCache.set(cacheKey, { value: result, ts: Date.now() });
-    return result;
-  } catch {
-    return "";
-  }
-}
+// 참고: 동적 예시(training_data 자동 삽입)는 제거함 (2026-08-06).
+// 검수 안 된 유저 피드백이 표준 예시가 되는 자기오염 문제 —
+// 대신 아래 FEW_SHOT_EXAMPLES(검수된 고정 예시)만 사용. training_data 수집 자체는 계속.
 
 const FEW_SHOT_EXAMPLES = {
   acting: `[좋은 피드백 예시]
@@ -175,7 +135,6 @@ export default async function handler(req, res) {
     }
 
     const fewShot = FEW_SHOT_EXAMPLES[field] || FEW_SHOT_EXAMPLES.general;
-    const dynamicExamples = await getDynamicExamples(field);
 
     const systemPrompt = `당신은 20년 경력의 예술 전문 마스터 코치입니다. 한국예술종합학교, 국립극단, 주요 영화제에서 활동한 현역 전문가이며, ArtLink 앱에서 아티스트의 연습 노트를 분석하여 전문적이고 실질적인 코칭을 제공합니다.
 
@@ -190,16 +149,17 @@ export default async function handler(req, res) {
 - 절대로 "정보가 부족합니다", "더 알려주세요", "구체적 자료가 필요합니다" 같은 말을 하지 마세요
 - 절대로 사용자에게 추가 정보를 요청하거나 질문하지 마세요
 - 절대로 마크다운 헤딩(#, ##), 볼드(**), 목록(-)을 사용하지 마세요. 이모지 섹션 구분과 일반 텍스트만 사용하세요
-- 노트가 짧더라도 맥락을 추론하여 전문적으로 분석하세요
-- 피드백은 1200-1800자로 작성하세요. 2000자를 절대 넘기지 마세요. 각 섹션 2-3문장으로 밀도 있게 분석하세요 — 길이보다 구체성이 우선입니다
+- 노트에 실제로 적힌 내용만 근거로 삼으세요. 노트에 없는 행동·대사·디테일을 지어내서 본 것처럼 쓰지 마세요
+- 노트의 구체적 내용이 3문장 이상이면: 피드백을 1200-1800자로 작성하세요. 2000자를 절대 넘기지 마세요. 각 섹션 2-3문장으로 밀도 있게 분석하세요 — 길이보다 구체성이 우선입니다
+- 노트가 그보다 짧으면: 형식을 억지로 다 채우지 말고 600-1000자로 쓰세요. 적힌 내용에서 읽어낼 수 있는 관찰 2-3가지(📌💪🎯) + 이런 연습에서 전문가들이 흔히 짚는 핵심 포인트 1가지(💡) + 다음 기록에 무엇을 적으면 훨씬 깊은 분석을 받을 수 있는지(🔜)로 구성하세요. 짧은 노트에 긴 일반론을 붙이는 것이 최악입니다
 - 사용자의 롤모델, 관심 분야, 경력 정보가 있으면 이를 피드백에 적극 연결하세요
 - 전문 용어를 사용할 때는 괄호 안에 쉬운 설명을 덧붙이세요
 - 요청된 형식(📌💪🎯🎭🎨💡📈🔜)을 반드시 따르되, 각 섹션 사이에 빈 줄을 넣어 가독성을 높이세요
 
 ${fewShot}`;
 
-    // 프롬프트 캐싱: 고정 부분(역할+규칙+few-shot)은 cache_control로 캐싱,
-    // 동적 예시(5분마다 바뀜)는 브레이크포인트 뒤에 둬서 캐시를 깨지 않게 함
+    // 프롬프트 캐싱: 고정 부분(역할+규칙+few-shot)은 cache_control로 캐싱
+    // Sonnet 4.6 최소 캐시 프리픽스 2048토큰 — 캐시 동작은 usage 로그로 확인
     const systemBlocks = [
       {
         type: "text",
@@ -207,9 +167,6 @@ ${fewShot}`;
         cache_control: { type: "ephemeral" },
       },
     ];
-    if (dynamicExamples) {
-      systemBlocks.push({ type: "text", text: dynamicExamples });
-    }
 
     // 비한국어 노트 감지 → 응답 언어 강제 (한국어 few-shot이 지배적이라 명시 블록 필요)
     const hangulCount = (prompt.match(/[가-힣]/g) || []).length;
@@ -233,18 +190,18 @@ ${fewShot}`;
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
       res.setHeader("Cache-Control", "no-cache, no-transform");
       res.setHeader("X-Accel-Buffering", "no");
-      res.write("📌"); // prefill 먼저 전송
-      let full = "📌";
+      // 생성 메타 — 앱이 노트 저장 시 함께 기록 (스트림은 본문이 텍스트라 헤더로 전달)
+      res.setHeader("X-AL-Model", MODEL);
+      res.setHeader("X-AL-Prompt-Version", PROMPT_VERSION);
+      let full = "";
       try {
+        // Sonnet 4.6은 어시스턴트 프리필 미지원(400) — "📌 시작"은 시스템 프롬프트 지시로 대체됨
         const stream = await client.messages.stream({
-          model: "claude-haiku-4-5-20251001",
+          model: MODEL,
           max_tokens: 8192,
-          temperature: 1,
+          temperature: 0.7,
           system: systemBlocks,
-          messages: [
-            { role: "user", content: prompt },
-            { role: "assistant", content: "📌" },
-          ],
+          messages: [{ role: "user", content: prompt }],
         });
         for await (const event of stream) {
           if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
@@ -268,22 +225,19 @@ ${fewShot}`;
 
     // ── 비스트리밍 경로 (구버전 앱 호환) ──
     const msg = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: MODEL,
       max_tokens: 8192,
-      temperature: 1,
+      temperature: 0.7,
       system: systemBlocks,
-      messages: [
-        { role: "user", content: prompt },
-        { role: "assistant", content: "📌" },
-      ],
+      messages: [{ role: "user", content: prompt }],
     });
 
     // 캐시 동작 및 비용 모니터링용
     console.log("[ai-analyze] usage:", JSON.stringify(msg.usage));
 
-    // Prepend the prefill to the response
     const rawText = msg.content[0]?.text || "";
-    let analysis = "📌" + rawText;
+    // 프리필 제거 후 모델이 직접 📌로 시작 — 혹시 누락하면 보정 (앱 UI 일관성)
+    let analysis = rawText.startsWith("📌") ? rawText : "📌 " + rawText;
 
     // If truncated, append closing so it doesn't end abruptly
     if (msg.stop_reason === "max_tokens") {
@@ -295,7 +249,9 @@ ${fewShot}`;
     }
 
     if (user) consumeText(user.id); // 성공 시에만 카운트 (fire-and-forget)
-    return res.status(200).json({ analysis });
+    return res
+      .status(200)
+      .json({ analysis, meta: { model: MODEL, promptVersion: PROMPT_VERSION } });
   } catch (error) {
     console.error("[ai-analyze] Error:", error.message, error.status, error.body);
     return res.status(500).json({ error: "AI analysis failed", detail: error.message });

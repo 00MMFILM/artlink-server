@@ -9,6 +9,10 @@ import {
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// 생성 메타 — 노트에 함께 저장되어 품질 비교·학습 데이터 필터의 기준이 된다
+const MODEL = "claude-sonnet-4-6";
+const PROMPT_VERSION = "2026-08-06.1";
+
 const VIDEO_FEW_SHOT = {
   acting: `[영상 분석 예시]
 📌 영상에서 감정 전환의 흐름이 자연스러워요. 초반 긴장감에서 후반 해소까지 몸 전체로 표현하고 있습니다. 전체적인 감정 톤이 '#담담하게'에서 시작해 '#격앙된'을 거쳐 '#속삭이듯'으로 마무리되는 아크가 인상적이에요.
@@ -91,6 +95,7 @@ export default async function handler(req, res) {
 - 절대로 사용자에게 추가 정보를 요청하거나 질문하지 마세요
 - 절대로 마크다운 헤딩(#, ##), 볼드(**), 목록(-)을 사용하지 마세요. 이모지 섹션 구분과 일반 텍스트만 사용하세요
 - 영상 프레임에서 시각적 요소(자세, 표정, 동작, 공간 활용, 조명 등)를 구체적으로 분석하세요
+- 프레임에서 실제로 관찰되는 것만 근거로 삼으세요. 보이지 않는 동작·표정·디테일을 지어내서 본 것처럼 쓰지 마세요. 프레임은 순간 포착이므로 프레임 사이 변화는 "~로 보입니다" 수준으로 신중하게 추론하세요
 - 음성 전사가 있으면 대사 전달력, 음성 톤, 리듬 등도 분석에 포함하세요
 - 음성 전사가 없으면 영상 프레임의 시각적 요소만으로 분석하세요. 전사가 없다는 사실을 절대 언급하지 마세요. 🎤 섹션은 영상에서 관찰되는 음성/사운드 관련 시각적 단서(입 모양, 호흡, 발성 자세 등)를 기반으로 작성하세요
 - 시간 순서에 따른 흐름 변화를 관찰하세요
@@ -134,19 +139,25 @@ ${fewShot}`;
       : "";
     content.push({ type: "text", text: userText });
 
+    // 시스템은 요청 간 동일 → 캐싱 (Sonnet 4.6 최소 프리픽스 2048토큰)
+    // Sonnet 4.6은 어시스턴트 프리필 미지원(400) — "📌 시작"은 시스템 프롬프트 지시로 대체
     const msg = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: MODEL,
       max_tokens: 8192,
-      temperature: 1,
-      system: systemPrompt + languageOverride,
-      messages: [
-        { role: "user", content },
-        { role: "assistant", content: "📌" },
+      temperature: 0.7,
+      system: [
+        { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
+        ...(languageOverride ? [{ type: "text", text: languageOverride }] : []),
       ],
+      messages: [{ role: "user", content }],
     });
 
+    // 캐시 동작 및 비용 모니터링용
+    console.log("[analyze-video] usage:", JSON.stringify(msg.usage));
+
     const rawText = msg.content[0]?.text || "";
-    let analysis = "📌" + rawText;
+    // 프리필 제거 후 모델이 직접 📌로 시작 — 혹시 누락하면 보정 (앱 UI 일관성)
+    let analysis = rawText.startsWith("📌") ? rawText : "📌 " + rawText;
 
     if (msg.stop_reason === "max_tokens") {
       analysis += "\n\n---\n(분석이 길어져 일부 생략되었습니다)";
@@ -157,7 +168,9 @@ ${fewShot}`;
     }
 
     if (user) consumeVideo(user.id); // 성공 시에만 카운트 (fire-and-forget)
-    return res.status(200).json({ analysis });
+    return res
+      .status(200)
+      .json({ analysis, meta: { model: MODEL, promptVersion: PROMPT_VERSION } });
   } catch (error) {
     console.error("[analyze-video] Error:", error.message);
     return res.status(500).json({ error: "Video analysis failed" });
