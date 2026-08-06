@@ -1,10 +1,11 @@
-// 수익화 사용량 판정 공통 모듈 (2026-07-24 확정 구조)
+// 수익화 사용량 판정 공통 모듈 (2026-08-06 공정사용 상한 반영)
 // - 텍스트 피드백: 무료 1일 1회 (KST 자정 리셋) + 광고 크레딧 하루 최대 +2
 // - 영상 분석: 무료 평생 3회 체험
-// - premium_members(구독/베타 명단) 등재 시 무제한
+// - premium_members(구독/베타 명단): 공정사용 상한 — 텍스트 10/일, 영상 15/월
+//   (완전 무제한은 남용 시 확정 적자 — 2026-08-06 가격정책 결정)
 // - 사용자 식별: Authorization: Bearer <supabase access token>
 //   식별 불가(구버전 앱)면 판정 없이 통과 — 1.10.14부터 앱이 토큰을 보내며 자동 적용
-// 테이블: schema-usage.sql 참조
+// 테이블: schema-usage.sql + schema-data-assets.sql 참조
 import { createClient } from "@supabase/supabase-js";
 
 const APP_TOKEN = process.env.APP_SECRET || "";
@@ -12,6 +13,8 @@ const APP_TOKEN = process.env.APP_SECRET || "";
 export const TEXT_DAILY_FREE = 1;
 export const AD_CREDITS_MAX = 2;
 export const VIDEO_TRIAL_TOTAL = 3;
+export const PREMIUM_TEXT_DAILY = 10; // 공정사용 상한
+export const PREMIUM_VIDEO_MONTHLY = 15;
 
 const supabase =
   process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
@@ -59,11 +62,21 @@ async function isUnlimited(userId) {
   return !!data;
 }
 
-// 텍스트 피드백 판정. { allowed, used, max, unlimited }
+// 텍스트 피드백 판정. { allowed, used, max, premium? }
 export async function checkTextQuota(userId) {
   if (!supabase) return { allowed: true };
   try {
-    if (await isUnlimited(userId)) return { allowed: true, unlimited: true };
+    if (await isUnlimited(userId)) {
+      // 프리미엄 공정사용: 10/일 (일반 사용자는 절대 안 닿고 남용만 차단)
+      const { data } = await supabase
+        .from("ai_usage_daily")
+        .select("text_count")
+        .eq("user_id", userId)
+        .eq("day", kstDay())
+        .maybeSingle();
+      const used = data?.text_count || 0;
+      return { allowed: used < PREMIUM_TEXT_DAILY, used, max: PREMIUM_TEXT_DAILY, premium: true };
+    }
     const { data } = await supabase
       .from("ai_usage_daily")
       .select("text_count, ad_credits")
@@ -103,11 +116,22 @@ export async function consumeText(userId) {
   }
 }
 
-// 영상 분석 판정 (평생 체험). { allowed, used, max, unlimited }
+// 영상 분석 판정 (무료: 평생 체험 / 프리미엄: 월 15회). { allowed, used, max, premium? }
 export async function checkVideoQuota(userId) {
   if (!supabase) return { allowed: true };
   try {
-    if (await isUnlimited(userId)) return { allowed: true, unlimited: true };
+    if (await isUnlimited(userId)) {
+      // 월 합산 (KST 기준 이번 달) — video_count 컬럼 미적용 시 catch로 통과 (안전 저하)
+      const monthStart = kstDay().slice(0, 8) + "01";
+      const { data, error } = await supabase
+        .from("ai_usage_daily")
+        .select("video_count")
+        .eq("user_id", userId)
+        .gte("day", monthStart);
+      if (error) throw error;
+      const used = (data || []).reduce((s, r) => s + (r.video_count || 0), 0);
+      return { allowed: used < PREMIUM_VIDEO_MONTHLY, used, max: PREMIUM_VIDEO_MONTHLY, premium: true };
+    }
     const { data } = await supabase
       .from("ai_video_usage")
       .select("total_count")
@@ -139,6 +163,28 @@ export async function consumeVideo(userId) {
     );
   } catch (e) {
     console.error("[usage] consumeVideo:", e.message);
+  }
+  // 프리미엄 월 상한용 일별 카운트 (video_count 컬럼 미적용 시 조용히 실패 — 무해)
+  try {
+    const day = kstDay();
+    const { data: daily } = await supabase
+      .from("ai_usage_daily")
+      .select("text_count, video_count")
+      .eq("user_id", userId)
+      .eq("day", day)
+      .maybeSingle();
+    await supabase.from("ai_usage_daily").upsert(
+      {
+        user_id: userId,
+        day,
+        text_count: daily?.text_count || 0,
+        video_count: (daily?.video_count || 0) + 1,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,day" }
+    );
+  } catch (e) {
+    console.error("[usage] consumeVideo daily:", e.message);
   }
 }
 

@@ -31,3 +31,6 @@ ALTER TABLE feedback_ratings ENABLE ROW LEVEL SECURITY;
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('media-archive', 'media-archive', false)
 ON CONFLICT (id) DO NOTHING;
+
+-- 4) 프리미엄 공정사용 — 영상 월 상한(15회) 판정용 일별 카운트 (2026-08-06 추가)
+ALTER TABLE ai_usage_daily ADD COLUMN IF NOT EXISTS video_count INT DEFAULT 0;
