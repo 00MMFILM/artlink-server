@@ -9,9 +9,103 @@ import {
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Gemini 영상 처리(업로드+인제스트 대기)가 길 수 있어 함수 시간 상향
+export const config = { maxDuration: 300 };
+
 // 생성 메타 — 노트에 함께 저장되어 품질 비교·학습 데이터 필터의 기준이 된다
 const MODEL = "claude-sonnet-4-6";
-const PROMPT_VERSION = "2026-08-06.1";
+const PROMPT_VERSION = "2026-08-06.2";
+
+// ── Gemini 영상 관찰 경로 ──
+// 프레임 요약의 한계(움직임·소리 증발)를 보완: 영상을 통째로 Gemini가 시청·청취하고
+// 타임스탬프 관찰 기록을 작성 → Sonnet이 기존 코칭 프레임워크로 문장화.
+// GEMINI_API_KEY 미설정, 실패, 구버전 앱(videoUrl 없음)이면 기존 프레임 경로로 폴백.
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const GEMINI_BASE = "https://generativelanguage.googleapis.com";
+const GEMINI_MAX_BYTES = 150 * 1024 * 1024; // 150MB 초과는 프레임 경로로
+
+async function geminiUploadVideo(videoUrl) {
+  const vres = await fetch(videoUrl);
+  if (!vres.ok) throw new Error(`video fetch ${vres.status}`);
+  const bytes = Buffer.from(await vres.arrayBuffer());
+  if (bytes.length === 0 || bytes.length > GEMINI_MAX_BYTES) {
+    throw new Error(`video size unsupported: ${bytes.length}`);
+  }
+
+  // Files API resumable 업로드 (start → upload+finalize)
+  const start = await fetch(`${GEMINI_BASE}/upload/v1beta/files?key=${GEMINI_KEY}`, {
+    method: "POST",
+    headers: {
+      "X-Goog-Upload-Protocol": "resumable",
+      "X-Goog-Upload-Command": "start",
+      "X-Goog-Upload-Header-Content-Length": String(bytes.length),
+      "X-Goog-Upload-Header-Content-Type": "video/mp4",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ file: { display_name: "artlink-video" } }),
+  });
+  const uploadUrl = start.headers.get("x-goog-upload-url");
+  if (!uploadUrl) throw new Error(`gemini upload start ${start.status}`);
+
+  const up = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      "X-Goog-Upload-Offset": "0",
+      "X-Goog-Upload-Command": "upload, finalize",
+    },
+    body: bytes,
+  });
+  if (!up.ok) throw new Error(`gemini upload ${up.status}`);
+  let file = (await up.json()).file;
+
+  // 영상 인제스트 대기 (PROCESSING → ACTIVE)
+  const deadline = Date.now() + 180000;
+  while (file.state === "PROCESSING" && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const g = await fetch(`${GEMINI_BASE}/v1beta/${file.name}?key=${GEMINI_KEY}`);
+    if (g.ok) file = await g.json();
+  }
+  if (file.state !== "ACTIVE") throw new Error(`gemini file state: ${file.state}`);
+  return file.uri;
+}
+
+async function geminiObserve(fileUri) {
+  const obsPrompt = `당신은 공연·영상 분석 전문가입니다. 이 영상을 처음부터 끝까지 보고 들은 뒤, 코칭의 근거가 될 관찰 기록을 작성하세요.
+
+규칙:
+- 모든 관찰에 시각을 붙이세요 (예: [0:42])
+- 다음을 관찰하세요: ①움직임·동작의 질 (전환의 부드러움, 템포, 연결, 자세 변화) ②표정·시선 변화 ③음성 — 실제 들리는 소리 기준 (음정, 억양 곡선, 말 속도 변화, 쉼의 위치와 길이, 떨림, 볼륨 변화) ④소리와 동작의 타이밍 관계 ⑤전체 감정 흐름(아크)
+- 평가나 조언은 하지 마세요. 관찰된 사실만 구체적으로 기록하세요
+- 실제로 보고 들은 것만 기록하세요. 추측은 "~로 보임"으로 구분하세요
+- 한국어로, 800자 이내로 밀도 있게`;
+
+  const res = await fetch(
+    `${GEMINI_BASE}/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { file_data: { file_uri: fileUri, mime_type: "video/mp4" } },
+              { text: obsPrompt },
+            ],
+          },
+        ],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
+      }),
+    }
+  );
+  if (!res.ok) {
+    throw new Error(`gemini generate ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
+  if (text.trim().length < 50) throw new Error("gemini observation too short");
+  return text.trim();
+}
 
 const VIDEO_FEW_SHOT = {
   acting: `[영상 분석 예시]
@@ -78,10 +172,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { prompt, field, noteTitle, frames, frameTimes, transcript } = req.body;
+    const { prompt, field, noteTitle, frames, frameTimes, videoUrl, transcript } = req.body;
 
     if (!prompt || !frames || frames.length === 0) {
       return res.status(400).json({ error: "prompt and frames are required" });
+    }
+
+    // Gemini 영상 관찰 시도 — 실패하면 조용히 프레임 경로로 폴백
+    let observation = null;
+    let pipeline = "frames";
+    if (videoUrl && GEMINI_KEY && typeof videoUrl === "string" && videoUrl.startsWith(process.env.SUPABASE_URL || "")) {
+      try {
+        const fileUri = await geminiUploadVideo(videoUrl);
+        observation = await geminiObserve(fileUri);
+        pipeline = "gemini+sonnet";
+        console.log("[analyze-video] gemini observation ok:", observation.length, "chars");
+      } catch (e) {
+        console.error("[analyze-video] gemini path failed, fallback to frames:", e.message);
+      }
     }
 
     const fewShot = VIDEO_FEW_SHOT[field] || VIDEO_FEW_SHOT.acting;
@@ -107,17 +215,26 @@ ${fewShot}`;
     // Build content array: interleave frame images with labels, then add text prompt
     const content = [];
 
+    // Gemini 관찰이 있으면 프레임은 시각 근거용 4장만 (관찰 기록이 시간 흐름을 대신함)
+    let sendFrames = frames;
+    let sendTimes = frameTimes;
+    if (observation && frames.length > 4) {
+      const picks = [0, Math.floor(frames.length / 3), Math.floor((frames.length * 2) / 3), frames.length - 1];
+      sendFrames = picks.map((i) => frames[i]);
+      sendTimes = Array.isArray(frameTimes) ? picks.map((i) => frameTimes[i]) : frameTimes;
+    }
+
     // 타임스탬프 라벨 — 모델이 프레임 간 시간 흐름(전환·템포)을 추적할 수 있게 함
     // 구버전 앱은 frameTimes 미전송 → 기존 번호 라벨로 폴백
     const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
-    frames.forEach((base64, idx) => {
-      const t = Array.isArray(frameTimes) ? frameTimes[idx] : null;
+    sendFrames.forEach((base64, idx) => {
+      const t = Array.isArray(sendTimes) ? sendTimes[idx] : null;
       content.push({
         type: "text",
         text:
           typeof t === "number"
-            ? `[프레임 ${idx + 1}/${frames.length} · ${fmtTime(t)} 시점]`
-            : `[프레임 ${idx + 1}/${frames.length}]`,
+            ? `[프레임 ${idx + 1}/${sendFrames.length} · ${fmtTime(t)} 시점]`
+            : `[프레임 ${idx + 1}/${sendFrames.length}]`,
       });
       content.push({
         type: "image",
@@ -129,8 +246,11 @@ ${fewShot}`;
       });
     });
 
-    // Append transcript section if available
+    // Append observation + transcript sections if available
     let userText = prompt;
+    if (observation) {
+      userText += `\n\n[영상 관찰 기록 — 영상 전체를 실제로 시청·청취한 전문 분석가의 타임스탬프 관찰. 움직임의 질·음성의 실제 소리에 대한 가장 신뢰할 수 있는 근거이므로 피드백에 적극 활용하세요]\n${observation}`;
+    }
     if (transcript) {
       userText += `\n\n[음성 전사]\n${transcript}`;
     }
@@ -177,7 +297,7 @@ ${fewShot}`;
     if (user) consumeVideo(user.id); // 성공 시에만 카운트 (fire-and-forget)
     return res
       .status(200)
-      .json({ analysis, meta: { model: MODEL, promptVersion: PROMPT_VERSION } });
+      .json({ analysis, meta: { model: MODEL, promptVersion: PROMPT_VERSION, pipeline } });
   } catch (error) {
     console.error("[analyze-video] Error:", error.message);
     return res.status(500).json({ error: "Video analysis failed" });
