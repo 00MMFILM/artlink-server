@@ -78,7 +78,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { prompt, field, noteTitle, frames, transcript } = req.body;
+    const { prompt, field, noteTitle, frames, frameTimes, transcript } = req.body;
 
     if (!prompt || !frames || frames.length === 0) {
       return res.status(400).json({ error: "prompt and frames are required" });
@@ -98,7 +98,7 @@ export default async function handler(req, res) {
 - 프레임에서 실제로 관찰되는 것만 근거로 삼으세요. 보이지 않는 동작·표정·디테일을 지어내서 본 것처럼 쓰지 마세요. 프레임은 순간 포착이므로 프레임 사이 변화는 "~로 보입니다" 수준으로 신중하게 추론하세요
 - 음성 전사가 있으면 대사 전달력, 음성 톤, 리듬 등도 분석에 포함하세요
 - 음성 전사가 없으면 영상 프레임의 시각적 요소만으로 분석하세요. 전사가 없다는 사실을 절대 언급하지 마세요. 🎤 섹션은 영상에서 관찰되는 음성/사운드 관련 시각적 단서(입 모양, 호흡, 발성 자세 등)를 기반으로 작성하세요
-- 시간 순서에 따른 흐름 변화를 관찰하세요
+- 시간 순서에 따른 흐름 변화를 관찰하세요. 프레임 라벨에 시각(예: 1:24 시점)이 있으면 이를 활용해 구간별 변화("0:30에서 안정적이던 자세가 1:10에는…")를 구체적으로 짚으세요
 - 피드백은 1200-1800자로 작성하세요. 2000자를 절대 넘기지 마세요. 각 섹션 2-3문장으로 밀도 있게 분석하세요 — 길이보다 구체성이 우선입니다
 - 요청된 형식(📌💪🎯🎭🎤📈🔜)을 반드시 따르되, 각 섹션 사이에 빈 줄을 넣으세요
 
@@ -107,10 +107,17 @@ ${fewShot}`;
     // Build content array: interleave frame images with labels, then add text prompt
     const content = [];
 
+    // 타임스탬프 라벨 — 모델이 프레임 간 시간 흐름(전환·템포)을 추적할 수 있게 함
+    // 구버전 앱은 frameTimes 미전송 → 기존 번호 라벨로 폴백
+    const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
     frames.forEach((base64, idx) => {
+      const t = Array.isArray(frameTimes) ? frameTimes[idx] : null;
       content.push({
         type: "text",
-        text: `[프레임 ${idx + 1}/${frames.length}]`,
+        text:
+          typeof t === "number"
+            ? `[프레임 ${idx + 1}/${frames.length} · ${fmtTime(t)} 시점]`
+            : `[프레임 ${idx + 1}/${frames.length}]`,
       });
       content.push({
         type: "image",
