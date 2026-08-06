@@ -21,7 +21,8 @@ const PROMPT_VERSION = "2026-08-06.2";
 // 타임스탬프 관찰 기록을 작성 → Sonnet이 기존 코칭 프레임워크로 문장화.
 // GEMINI_API_KEY 미설정, 실패, 구버전 앱(videoUrl 없음)이면 기존 프레임 경로로 폴백.
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+// gemini-flash-latest: 항상 현행 Flash를 가리키는 별칭 — 특정 버전 폐기에 영향 없음
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com";
 const GEMINI_MAX_BYTES = 1024 * 1024 * 1024; // 1GB (1080p 5분 여유) — 초과 시 프레임 경로로
 
