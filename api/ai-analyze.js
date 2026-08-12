@@ -214,7 +214,7 @@ ${fewShot}`;
         if (finalMsg.stop_reason === "max_tokens") {
           res.write("\n\n---\n(분석이 길어져 일부 생략되었습니다)");
         }
-        if (user) consumeText(user.id); // 성공 시에만 카운트 (fire-and-forget)
+        if (user) await consumeText(user.id); // 성공 시에만 카운트 (await로 서버리스 freeze 전 저장 보장)
       } catch (streamErr) {
         console.error("[ai-analyze] stream error:", streamErr.message);
         // 스트림 도중 실패 — 지금까지 받은 것만이라도 전달하고 종료
@@ -248,7 +248,7 @@ ${fewShot}`;
       return res.status(500).json({ error: "Empty response from AI" });
     }
 
-    if (user) consumeText(user.id); // 성공 시에만 카운트 (fire-and-forget)
+    if (user) await consumeText(user.id); // 성공 시에만 카운트 (await로 서버리스 freeze 전 저장 보장)
     return res
       .status(200)
       .json({ analysis, meta: { model: MODEL, promptVersion: PROMPT_VERSION } });

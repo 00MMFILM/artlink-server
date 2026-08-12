@@ -299,7 +299,7 @@ ${fewShot}`;
       return res.status(500).json({ error: "Empty response from AI" });
     }
 
-    if (user) consumeVideo(user.id); // 성공 시에만 카운트 (fire-and-forget)
+    if (user) await consumeVideo(user.id); // 성공 시에만 카운트 (await로 서버리스 freeze 전 저장 보장)
     return res
       .status(200)
       .json({ analysis, meta: { model: MODEL, promptVersion: PROMPT_VERSION, pipeline } });
