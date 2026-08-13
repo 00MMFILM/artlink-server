@@ -26,7 +26,7 @@ export default async function handler(req, res) {
   ]);
 
   return res.status(200).json({
-    unlimited: !!(text.unlimited || video.unlimited),
+    unlimited: !!(text.premium || video.premium),
     text: { allowed: text.allowed, used: text.used ?? 0, max: text.max ?? 0 },
     video: { allowed: video.allowed, used: video.used ?? 0, max: video.max ?? 0 },
   });
