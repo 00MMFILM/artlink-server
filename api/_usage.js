@@ -15,6 +15,7 @@ export const AD_CREDITS_MAX = 2;
 export const VIDEO_TRIAL_TOTAL = 3;
 export const PREMIUM_TEXT_DAILY = 10; // 공정사용 상한
 export const PREMIUM_VIDEO_MONTHLY = 15;
+export const GUEST_TRIAL_TOTAL = 1; // 비로그인 게스트: 평생 1회(텍스트+영상 합산) 체험 후 가입 유도
 
 const supabase =
   process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
@@ -185,6 +186,46 @@ export async function consumeVideo(userId) {
     );
   } catch (e) {
     console.error("[usage] consumeVideo daily:", e.message);
+  }
+}
+
+// ── 게스트(비로그인) 체험 ── deviceId로 식별. 평생 1회(텍스트+영상 공유 카운터).
+// 앱은 로그인 안 되면 X-Device-Id 헤더를 보냄. 없으면(구버전) 판정 없이 통과.
+export function identifyGuest(req) {
+  const id = req.headers["x-device-id"];
+  return typeof id === "string" && id.length > 3 && id.length <= 128 ? id : null;
+}
+
+export async function checkGuestQuota(deviceId) {
+  if (!supabase) return { allowed: true };
+  try {
+    const { data } = await supabase
+      .from("guest_ai_usage")
+      .select("count")
+      .eq("device_id", deviceId)
+      .maybeSingle();
+    const used = data?.count || 0;
+    return { allowed: used < GUEST_TRIAL_TOTAL, used, max: GUEST_TRIAL_TOTAL };
+  } catch (e) {
+    console.error("[usage] checkGuestQuota:", e.message);
+    return { allowed: true }; // 판정 실패가 서비스를 막으면 안 됨
+  }
+}
+
+export async function consumeGuest(deviceId) {
+  if (!supabase) return;
+  try {
+    const { data } = await supabase
+      .from("guest_ai_usage")
+      .select("count")
+      .eq("device_id", deviceId)
+      .maybeSingle();
+    await supabase.from("guest_ai_usage").upsert(
+      { device_id: deviceId, count: (data?.count || 0) + 1, updated_at: new Date().toISOString() },
+      { onConflict: "device_id" }
+    );
+  } catch (e) {
+    console.error("[usage] consumeGuest:", e.message);
   }
 }
 

@@ -5,6 +5,9 @@ import {
   identifyUser,
   checkTextQuota,
   consumeText,
+  identifyGuest,
+  checkGuestQuota,
+  consumeGuest,
 } from "./_usage.js";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -145,8 +148,9 @@ export default async function handler(req, res) {
 
   if (!checkAppToken(req)) return rejectAppToken(res);
 
-  // 사용량 판정 — 식별된 유저만 (구버전 앱은 Authorization 미전송 → 통과)
+  // 사용량 판정 — 로그인 유저는 Authorization, 게스트는 X-Device-Id로 식별
   const user = await identifyUser(req);
+  let guestId = null;
   if (user) {
     const quota = await checkTextQuota(user.id);
     if (!quota.allowed) {
@@ -156,6 +160,19 @@ export default async function handler(req, res) {
         used: quota.used,
         max: quota.max,
       });
+    }
+  } else {
+    guestId = identifyGuest(req);
+    if (guestId) {
+      const gq = await checkGuestQuota(guestId);
+      if (!gq.allowed) {
+        return res.status(429).json({
+          error: "quota_exceeded",
+          type: "guest_trial",
+          used: gq.used,
+          max: gq.max,
+        });
+      }
     }
   }
 
@@ -247,6 +264,7 @@ ${fewShot}`;
           res.write("\n\n---\n(분석이 길어져 일부 생략되었습니다)");
         }
         if (user) await consumeText(user.id); // 성공 시에만 카운트 (await로 서버리스 freeze 전 저장 보장)
+        else if (guestId) await consumeGuest(guestId);
       } catch (streamErr) {
         console.error("[ai-analyze] stream error:", streamErr.message);
         // 스트림 도중 실패 — 지금까지 받은 것만이라도 전달하고 종료
@@ -281,6 +299,7 @@ ${fewShot}`;
     }
 
     if (user) await consumeText(user.id); // 성공 시에만 카운트 (await로 서버리스 freeze 전 저장 보장)
+    else if (guestId) await consumeGuest(guestId);
     return res
       .status(200)
       .json({ analysis, meta: { model: MODEL, promptVersion: PROMPT_VERSION } });

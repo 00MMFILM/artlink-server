@@ -5,6 +5,9 @@ import {
   identifyUser,
   checkVideoQuota,
   consumeVideo,
+  identifyGuest,
+  checkGuestQuota,
+  consumeGuest,
 } from "./_usage.js";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -177,8 +180,9 @@ export default async function handler(req, res) {
 
   if (!checkAppToken(req)) return rejectAppToken(res);
 
-  // 영상 체험 판정 — 식별된 유저만 (구버전 앱은 Authorization 미전송 → 통과)
+  // 영상 판정 — 로그인 유저는 Authorization, 게스트는 X-Device-Id로 식별
   const user = await identifyUser(req);
+  let guestId = null;
   if (user) {
     const quota = await checkVideoQuota(user.id);
     if (!quota.allowed) {
@@ -188,6 +192,19 @@ export default async function handler(req, res) {
         used: quota.used,
         max: quota.max,
       });
+    }
+  } else {
+    guestId = identifyGuest(req);
+    if (guestId) {
+      const gq = await checkGuestQuota(guestId);
+      if (!gq.allowed) {
+        return res.status(429).json({
+          error: "quota_exceeded",
+          type: "guest_trial",
+          used: gq.used,
+          max: gq.max,
+        });
+      }
     }
   }
 
@@ -315,6 +332,7 @@ ${fewShot}`;
     }
 
     if (user) await consumeVideo(user.id); // 성공 시에만 카운트 (await로 서버리스 freeze 전 저장 보장)
+    else if (guestId) await consumeGuest(guestId);
     return res
       .status(200)
       .json({ analysis, meta: { model: MODEL, promptVersion: PROMPT_VERSION, pipeline } });
