@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { checkAppToken, rejectAppToken } from "./_usage.js";
 
 const supabase =
   process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
@@ -20,6 +21,8 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-App-Token");
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+
+  if (!checkAppToken(req)) return rejectAppToken(res);
 
   if (!supabase) {
     return res.status(500).json({ error: "Server configuration error" });

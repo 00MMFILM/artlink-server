@@ -22,7 +22,11 @@ export default async function handler(req, res) {
     if (f.field) query = query.contains("fields", [f.field]);
     if (f.specialties && f.specialties.length > 0) query = query.overlaps("specialties", f.specialties);
     if (f.location) query = query.ilike("location", `%${f.location}%`);
-    if (f.search) query = query.or(`name.ilike.%${f.search}%,agency.ilike.%${f.search}%`);
+    if (f.search) {
+      // PostgREST or() 인젝션 방어: 콤마·괄호·별표 등 구조 문자 제거 후 길이 제한
+      const s = String(f.search).replace(/[,()*\\]/g, "").trim().slice(0, 100);
+      if (s) query = query.or(`name.ilike.%${s}%,agency.ilike.%${s}%`);
+    }
 
     const { data, error } = await query;
     if (error) throw error;

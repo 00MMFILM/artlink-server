@@ -1,13 +1,15 @@
 // 인물 검색 — 롤모델 자유 입력 시 실제 인물을 찾아 자동완성.
 // 한국어 위키백과 API 사용 (무료·키 불필요·클라우드 접근 가능).
 // 반환: [{ name, description, thumbnail }]
-const APP_TOKEN = process.env.APP_SECRET || "";
+import { checkAppToken, rejectAppToken } from "./_usage.js";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-App-Token");
   if (req.method === "OPTIONS") return res.status(200).end();
+
+  if (!checkAppToken(req)) return rejectAppToken(res);
 
   const q = (req.query && (req.query.q || req.query.query) || "").trim();
   if (!q || q.length < 1) return res.status(200).json({ results: [] });

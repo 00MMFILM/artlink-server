@@ -75,6 +75,12 @@ export default async function handler(req, res) {
     if (!["http:", "https:"].includes(parsed.protocol)) {
       return res.status(400).json({ error: "Only http/https URLs allowed" });
     }
+    // SSRF 방어: 앱이 올린 Supabase Storage 원본만 허용 (ai-analyze/analyze-video와 동일 원칙).
+    // 없으면 ffmpeg가 임의 내부주소(169.254.169.254 등)로 요청 가능.
+    const storageBase = process.env.SUPABASE_URL;
+    if (!storageBase || !videoUrl.startsWith(`${storageBase}/storage/`)) {
+      return res.status(400).json({ error: "Only Supabase storage URLs allowed" });
+    }
 
     try {
       chmodSync(ffmpegPath, 0o755);
