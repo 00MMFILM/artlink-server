@@ -14,7 +14,7 @@ export const config = { maxDuration: 300 };
 
 // 생성 메타 — 노트에 함께 저장되어 품질 비교·학습 데이터 필터의 기준이 된다
 const MODEL = "claude-sonnet-4-6";
-const PROMPT_VERSION = "2026-08-06.2";
+const PROMPT_VERSION = "2026-08-13.1";
 
 // ── Gemini 영상 관찰 경로 ──
 // 프레임 요약의 한계(움직임·소리 증발)를 보완: 영상을 통째로 Gemini가 시청·청취하고
@@ -75,12 +75,27 @@ async function geminiUploadVideo(videoUrl) {
   return file.uri;
 }
 
-async function geminiObserve(fileUri) {
+// 분야별 관찰 체크리스트 — 미술(작업 과정)·영화(촬영물)는 공연용 체크리스트로는 핵심을 놓침
+const OBS_FOCUS = {
+  acting:
+    "①움직임·동작의 질 (전환의 부드러움, 템포, 연결, 자세 변화) ②표정·시선 변화 ③음성 — 실제 들리는 소리 기준 (음정, 억양 곡선, 말 속도 변화, 쉼의 위치와 길이, 떨림, 볼륨 변화) ④소리와 동작의 타이밍 관계 ⑤전체 감정 흐름(아크)",
+  dance:
+    "①동작의 질 (전환, 템포, 연결, 레벨 변화, 회전·점프·착지의 처리) ②공간 활용과 이동 경로 ③음악과 동작의 싱크 (비트 정확도, 악센트 처리) ④에너지 다이내믹의 변화 ⑤호흡과 동작의 관계",
+  music:
+    "①들리는 소리 최우선 — 음정 정확도, 리듬 안정성, 다이내믹 변화, 음색, 프레이징 ②보컬이면 발성 (호흡, 음역 전환, 비브라토, 지지) ③연주 자세와 손·팔 움직임, 불필요한 긴장 부위 ④소리와 몸의 관계 ⑤곡 전체의 감정 흐름",
+  art: "①붓터치·도구 사용의 방향, 속도, 압력 변화 ②색 혼합과 레이어를 쌓는 순서 ③구도·명암이 작업 중 어떻게 변해가는지 (초반↔후반 화면 비교) ④작업 리듬 (몰입 구간, 물러나서 관찰하는 순간, 머뭇거림) ⑤화면 전체의 톤 변화",
+  film: "①숏 사이즈와 앵글, 카메라 무빙의 종류와 안정성 ②조명의 방향·대비와 색감 ③컷 전환의 타이밍과 리듬 ④들리는 소리 — 대사 전달력, 앰비언스, 음악의 기능 ⑤장면 전체의 서사·감정 흐름",
+  literature:
+    "①낭독 음성 — 억양 곡선, 속도 변화, 쉼의 위치와 길이, 볼륨 변화 ②문장 리듬과 호흡점 ③감정 표현의 변화 ④발음 명료도 ⑤전체 낭독의 감정 흐름(아크)",
+};
+
+async function geminiObserve(fileUri, field) {
+  const focus = OBS_FOCUS[field] || OBS_FOCUS.acting;
   const obsPrompt = `당신은 공연·영상 분석 전문가입니다. 이 영상을 처음부터 끝까지 보고 들은 뒤, 코칭의 근거가 될 관찰 기록을 작성하세요.
 
 규칙:
 - 모든 관찰에 시각을 붙이세요 (예: [0:42])
-- 다음을 관찰하세요: ①움직임·동작의 질 (전환의 부드러움, 템포, 연결, 자세 변화) ②표정·시선 변화 ③음성 — 실제 들리는 소리 기준 (음정, 억양 곡선, 말 속도 변화, 쉼의 위치와 길이, 떨림, 볼륨 변화) ④소리와 동작의 타이밍 관계 ⑤전체 감정 흐름(아크)
+- 다음을 관찰하세요: ${focus}
 - 평가나 조언은 하지 마세요. 관찰된 사실만 구체적으로 기록하세요
 - 실제로 보고 들은 것만 기록하세요. 추측은 "~로 보임"으로 구분하세요
 - 한국어로, 800자 이내로 밀도 있게`;
@@ -189,7 +204,7 @@ export default async function handler(req, res) {
     if (videoUrl && GEMINI_KEY && typeof videoUrl === "string" && videoUrl.startsWith(process.env.SUPABASE_URL || "")) {
       try {
         const fileUri = await geminiUploadVideo(videoUrl);
-        observation = await geminiObserve(fileUri);
+        observation = await geminiObserve(fileUri, field);
         pipeline = "gemini+sonnet";
         console.log("[analyze-video] gemini observation ok:", observation.length, "chars");
       } catch (e) {
