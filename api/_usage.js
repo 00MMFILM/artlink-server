@@ -220,10 +220,12 @@ export async function consumeGuest(deviceId) {
       .select("count")
       .eq("device_id", deviceId)
       .maybeSingle();
-    await supabase.from("guest_ai_usage").upsert(
+    const { error } = await supabase.from("guest_ai_usage").upsert(
       { device_id: deviceId, count: (data?.count || 0) + 1, updated_at: new Date().toISOString() },
       { onConflict: "device_id" }
     );
+    // upsert 실패를 조용히 넘기면 게스트 카운트가 0에 머물러 무제한 체험이 됨 → 반드시 로깅
+    if (error) console.error("[usage] consumeGuest upsert failed:", deviceId, error.message);
   } catch (e) {
     console.error("[usage] consumeGuest:", e.message);
   }
