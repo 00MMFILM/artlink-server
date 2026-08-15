@@ -14,7 +14,16 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // 생성 메타 — 노트에 함께 저장되어 나중에 품질 비교·학습 데이터 필터의 기준이 된다
 const MODEL = "claude-sonnet-4-6";
-const PROMPT_VERSION = "2026-08-13.1";
+const PROMPT_VERSION = "2026-08-15.1";
+
+// 성장 궤적 분석용 5축 점수 — 신버전 앱(wantScores)에서만 요청. 구버전 앱엔 안 붙여 마커 노출 방지.
+const SCORING_INSTRUCTION = `
+
+채점 (필수 — 성장 궤적 분석용):
+- 피드백을 모두 마친 뒤, 맨 마지막 줄에 이 기록의 5개 축을 1~10 정수로 평가해 아래 형식 그대로 정확히 한 줄만 출력하세요.
+- 이 줄은 시스템이 자동 처리하며 사용자에게 보이지 않습니다. 설명·이모지·다른 텍스트 없이 이 형식만:
+[[SCORES]] technique=N expression=N creativity=N consistency=N growth=N
+- 각 축: technique=기술 완성도, expression=표현력·전달력, creativity=창의성·해석, consistency=안정성·일관성, growth=이전 기록 대비 성장(이전 정보 없으면 현재 수준 기준). 노트 정보가 적으면 관찰 가능한 범위에서 보수적으로 추정하세요.`;
 
 // 참고: 동적 예시(training_data 자동 삽입)는 제거함 (2026-08-06).
 // 검수 안 된 유저 피드백이 표준 예시가 되는 자기오염 문제 —
@@ -177,7 +186,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { prompt, field, noteTitle } = req.body;
+    const { prompt, field, noteTitle, wantScores } = req.body;
 
     if (!prompt) {
       return res.status(400).json({ error: "prompt is required" });
@@ -205,7 +214,7 @@ export default async function handler(req, res) {
 - 전문 용어를 사용할 때는 괄호 안에 쉬운 설명을 덧붙이세요
 - 요청된 형식(📌💪🎯🎭🎨💡📈🔜)을 반드시 따르되, 각 섹션 사이에 빈 줄을 넣어 가독성을 높이세요
 
-${fewShot}`;
+${fewShot}${wantScores ? SCORING_INSTRUCTION : ""}`;
 
     // 프롬프트 캐싱: 고정 부분(역할+규칙+few-shot)은 cache_control로 캐싱
     // Sonnet 4.6 최소 캐시 프리픽스 2048토큰 — 캐시 동작은 usage 로그로 확인
