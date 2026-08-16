@@ -31,7 +31,7 @@ export default async function handler(req, res) {
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await supabase
         .from("mau_tracking")
-        .select("device_id, platform, month")
+        .select("device_id, platform, month, language")
         .range(from, from + PAGE - 1);
       if (error) throw error;
       if (!data || data.length === 0) break;
@@ -39,13 +39,19 @@ export default async function handler(req, res) {
       if (data.length < PAGE) break;
     }
 
-    // 신규 유입: device별 최초 month
+    // 신규 유입: device별 최초 month + 언어(최초 등장 시 기록)
     const first = {};
     for (const r of rows) {
       if (!r.month) continue;
       if (!first[r.device_id] || r.month < first[r.device_id].month) {
-        first[r.device_id] = { month: r.month, platform: normPlatform(r.platform) };
+        first[r.device_id] = { month: r.month, platform: normPlatform(r.platform), language: r.language || "unknown" };
       }
+    }
+    // 언어별 고유기기 (동남아 광고 유입 vs 한국 오가닉 판별용)
+    const byLang = {};
+    for (const d in first) {
+      const l = first[d].language;
+      byLang[l] = (byLang[l] || 0) + 1;
     }
     const newByMonth = {};
     for (const d in first) {
@@ -68,6 +74,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       totalDevices: Object.keys(first).length,
       totalsByPlatform: totals,
+      byLanguage: byLang,
       newByMonth,
       activeByMonth,
       rowsScanned: rows.length,
