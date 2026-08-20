@@ -186,7 +186,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { prompt, field, noteTitle, wantScores } = req.body;
+    const { prompt, field, noteTitle, wantScores, frames } = req.body;
 
     if (!prompt) {
       return res.status(400).json({ error: "prompt is required" });
@@ -239,6 +239,19 @@ ${fewShot}${wantScores ? SCORING_INSTRUCTION : ""}`;
       });
     }
 
+    // 첨부 사진(frames) 처리 — 각 원소는 순수 base64 JPEG 문자열(analyze-video.js와 동일 규약).
+    // 있으면 비전 블록(이미지들 뒤 텍스트)로 구성, 없으면 기존처럼 텍스트만 → 구버전 앱 호환.
+    const hasFrames = Array.isArray(frames) && frames.length > 0;
+    const userContent = hasFrames
+      ? [
+          ...frames.map((base64) => ({
+            type: "image",
+            source: { type: "base64", media_type: "image/jpeg", data: base64 },
+          })),
+          { type: "text", text: prompt },
+        ]
+      : prompt;
+
     const wantsStream = req.query && (req.query.stream === "1" || req.query.stream === "true");
 
     // ── 스트리밍 경로 (앱이 ?stream=1 로 요청) ──
@@ -259,7 +272,7 @@ ${fewShot}${wantScores ? SCORING_INSTRUCTION : ""}`;
           max_tokens: 8192,
           temperature: 0.7,
           system: systemBlocks,
-          messages: [{ role: "user", content: prompt }],
+          messages: [{ role: "user", content: userContent }],
         });
         for await (const event of stream) {
           if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
@@ -288,7 +301,7 @@ ${fewShot}${wantScores ? SCORING_INSTRUCTION : ""}`;
       max_tokens: 8192,
       temperature: 0.7,
       system: systemBlocks,
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content: userContent }],
     });
 
     // 캐시 동작 및 비용 모니터링용
