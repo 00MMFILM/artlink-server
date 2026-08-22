@@ -4,7 +4,8 @@
 // - premium_members(구독/베타 명단): 공정사용 상한 — 텍스트 10/일, 영상 15/월
 //   (완전 무제한은 남용 시 확정 적자 — 2026-08-06 가격정책 결정)
 // - 사용자 식별: Authorization: Bearer <supabase access token>
-//   식별 불가(구버전 앱)면 판정 없이 통과 — 1.10.14부터 앱이 토큰을 보내며 자동 적용
+//   식별 불가(구버전 앱)면 게스트로 강등. 게스트는 X-Device-Id, 헤더가 없으면 IP로 판정
+//   (헤더를 빼면 쿼터 검사가 스킵돼 무제한이 되던 구멍 차단 — 2026-08-22)
 // 테이블: schema-usage.sql + schema-data-assets.sql 참조
 import { createClient } from "@supabase/supabase-js";
 
@@ -190,10 +191,17 @@ export async function consumeVideo(userId) {
 }
 
 // ── 게스트(비로그인) 체험 ── deviceId로 식별. 평생 1회(텍스트+영상 공유 카운터).
-// 앱은 로그인 안 되면 X-Device-Id 헤더를 보냄. 없으면(구버전) 판정 없이 통과.
+// 앱은 로그인 안 되면 X-Device-Id 헤더를 보냄. 헤더가 없으면(구버전 앱·deviceId 캐시
+// 미로드·앱 밖 직접 호출) IP를 대체 식별자로 쓴다. 여기서 null을 돌려주면 호출부의
+// if (guestId) 안으로 못 들어가 쿼터 검사가 통째로 스킵되고, 앱 토큰만 있으면 무제한
+// 무료 호출이 된다 (2026-08-22 실측 확인 후 차단).
 export function identifyGuest(req) {
   const id = req.headers["x-device-id"];
-  return typeof id === "string" && id.length > 3 && id.length <= 128 ? id : null;
+  if (typeof id === "string" && id.length > 3 && id.length <= 128) return id;
+  const fwd = req.headers["x-forwarded-for"];
+  const raw = typeof fwd === "string" ? fwd.split(",")[0] : req.headers["x-real-ip"];
+  const ip = typeof raw === "string" ? raw.trim() : "";
+  return ip ? "ip:" + ip.slice(0, 120) : null;
 }
 
 export async function checkGuestQuota(deviceId) {
