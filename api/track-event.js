@@ -41,7 +41,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    await supabase.from("funnel_events").upsert(
+    const { error } = await supabase.from("funnel_events").upsert(
       {
         device_id: deviceId,
         event,
@@ -51,6 +51,11 @@ export default async function handler(req, res) {
       },
       { onConflict: "device_id,event", ignoreDuplicates: true }
     );
+    // upsert 실패를 조용히 넘기면 퍼널 이벤트가 유실된 걸 알 수 없다 → 반드시 로깅
+    if (error) {
+      console.error("[track-event] upsert failed:", deviceId, event, error.message);
+      return res.status(200).json({ success: false });
+    }
 
     return res.status(200).json({ success: true });
   } catch (e) {

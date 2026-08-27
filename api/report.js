@@ -26,13 +26,19 @@ export default async function handler(req, res) {
 
   // Supabase에 저장
   try {
-    await supabase.from("reports").insert({
+    // insert는 throw하지 않고 { error }를 돌려준다 → 확인 안 하면 신고가 통째로 유실됨
+    const { error } = await supabase.from("reports").insert({
       type: report.type || "unknown",
       payload: report,
       created_at: new Date().toISOString(),
     });
+    if (error) {
+      console.error("[REPORT DB ERROR]", error.message);
+      return res.status(500).json({ success: false, message: "Report save failed" });
+    }
   } catch (e) {
     console.error("[REPORT DB ERROR]", e.message);
+    return res.status(500).json({ success: false, message: "Report save failed" });
   }
 
   return res.status(200).json({ success: true, message: "Report received" });

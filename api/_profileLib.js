@@ -40,7 +40,7 @@ function timingSafeEq(a, b) {
 export function cors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-App-Token");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-App-Token, Authorization");
 }
 
 // 공개 브라우징에서 제거할 민감 컬럼 (이메일 등 연락처 PII)

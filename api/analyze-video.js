@@ -9,6 +9,7 @@ import {
   checkGuestQuota,
   consumeGuest,
 } from "./_usage.js";
+import { hasDataConsent, copyTempToArchive, upsertMediaAsset, titleHash } from "./_archive.js";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -209,10 +210,28 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { prompt, field, noteTitle, frames, frameTimes, videoUrl, transcript } = req.body;
+    const { prompt, field, noteTitle, noteLocalId, frames, frameTimes, videoUrl, transcript } = req.body;
 
     if (!prompt || !frames || frames.length === 0) {
       return res.status(400).json({ error: "prompt and frames are required" });
+    }
+
+    // 동의 기반 원본 영상 보관 — transcribe(음성)·gemini 성공 여부와 독립.
+    // 무음 영상(전사 실패)도 videoUrl만 있으면 여기서 보관된다.
+    // copyTempToArchive가 Supabase temp-media URL만 허용 → SSRF 안전. 미동의면 스킵.
+    if (hasDataConsent(req) && videoUrl) {
+      const archived = await copyTempToArchive(videoUrl, user?.id);
+      if (archived) {
+        await upsertMediaAsset({
+          user_id: user?.id || "anon",
+          note_local_id: noteLocalId || null,
+          field: field || null,
+          title_hash: titleHash(noteTitle),
+          kind: "video",
+          storage_path: archived.storagePath,
+          consent_at: new Date().toISOString(),
+        });
+      }
     }
 
     // Gemini 영상 관찰 시도 — 실패하면 조용히 프레임 경로로 폴백

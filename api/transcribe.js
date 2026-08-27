@@ -5,41 +5,14 @@ import os from "os";
 import crypto from "crypto";
 import ffmpegPath from "ffmpeg-static";
 import { checkAppToken, rejectAppToken, identifyUser } from "./_usage.js";
+import { hasDataConsent, copyTempToArchive, upsertMediaAsset, titleHash } from "./_archive.js";
 
 export const config = { maxDuration: 120 };
 
-// 원본 보존: 앱이 temp-media(공개·임시)에 올린 원본을 private 버킷 media-archive로 복사.
-// 앱은 전사 후 temp를 지우므로, 여기서 복사해야 영상·음성 원본이 학습 자산으로 남는다.
-// 실패해도 전사 응답은 정상 반환 (보존은 부가 기능 — 단 로그는 남김).
-async function archiveOriginal(videoUrl, userId) {
-  const base = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!base || !key || !videoUrl.startsWith(base)) return;
-  const marker = "/temp-media/";
-  const i = videoUrl.indexOf(marker);
-  if (i === -1) return;
-  const sourceKey = decodeURIComponent(videoUrl.slice(i + marker.length));
-  const destinationKey = `${userId || "anon"}/${sourceKey}`;
-  try {
-    const r = await fetch(`${base}/storage/v1/object/copy`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({
-        bucketId: "temp-media",
-        sourceKey,
-        destinationBucket: "media-archive",
-        destinationKey,
-      }),
-    });
-    if (!r.ok) console.error("[transcribe] archive failed:", r.status, await r.text());
-  } catch (e) {
-    console.error("[transcribe] archive error:", e.message);
-  }
-}
+// 원본 보존은 동의(X-Data-Consent: 1)한 경우에만 수행한다 — copyTempToArchive + media_assets.
+// 앱은 전사 후 temp를 지우므로, 동의 시 여기서 복사해야 원본이 학습 자산으로 남는다.
+// 구버전 앱은 이 헤더를 안 보내므로 자동으로 보관되지 않음 = 미동의 수집 즉시 중단.
+// 보관 실패해도 전사 응답은 정상 반환 (보존은 부가 기능 — 단 로그는 남김).
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -61,7 +34,7 @@ export default async function handler(req, res) {
   const outputPath = join(tmpDir, `output_${uniqueId}.mp3`);
 
   try {
-    const { videoUrl } = req.body || {};
+    const { videoUrl, noteLocalId, field, noteTitle } = req.body || {};
     if (!videoUrl)
       return res.status(400).json({ error: "videoUrl required" });
 
@@ -124,9 +97,23 @@ export default async function handler(req, res) {
 
     const transcript = await whisperRes.text();
 
-    // 원본 보존 — 응답 전에 완료해야 함 (서버리스는 응답 후 프로세스가 얼어붙음)
+    // 원본 보존 — 동의 시에만. 응답 전에 완료해야 함 (서버리스는 응답 후 프로세스가 얼어붙음)
     const user = await identifyUser(req);
-    await archiveOriginal(videoUrl, user?.id);
+    if (hasDataConsent(req)) {
+      const archived = await copyTempToArchive(videoUrl, user?.id);
+      if (archived) {
+        const kind = /\.(mp4|mov|webm|m4v|avi|mkv)$/i.test(archived.storagePath) ? "video" : "audio";
+        await upsertMediaAsset({
+          user_id: user?.id || "anon",
+          note_local_id: noteLocalId || null,
+          field: field || null,
+          title_hash: titleHash(noteTitle),
+          kind,
+          storage_path: archived.storagePath,
+          consent_at: new Date().toISOString(),
+        });
+      }
+    }
 
     return res.status(200).json({ transcript: transcript.trim() });
   } catch (error) {

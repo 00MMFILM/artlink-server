@@ -9,6 +9,7 @@ import {
   checkGuestQuota,
   consumeGuest,
 } from "./_usage.js";
+import { hasDataConsent, archivePhotos, titleHash } from "./_archive.js";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -186,10 +187,22 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { prompt, field, noteTitle, wantScores, frames } = req.body;
+    const { prompt, field, noteTitle, noteLocalId, wantScores, frames } = req.body;
 
     if (!prompt) {
       return res.status(400).json({ error: "prompt is required" });
+    }
+
+    // 동의 기반 첨부 사진 보관 (kind='photo') — 노트당 최대 8장, 초과분은 로그.
+    // AI 응답 성공 여부와 독립적으로 보관. 미동의·프레임 없음이면 스킵.
+    if (hasDataConsent(req) && Array.isArray(frames) && frames.length > 0) {
+      const saved = await archivePhotos(frames, {
+        userId: user?.id,
+        noteLocalId: noteLocalId || null,
+        field: field || null,
+        titleHash: titleHash(noteTitle),
+      });
+      if (saved) console.log(`[ai-analyze] archived ${saved} photo(s)`);
     }
 
     const fewShot = FEW_SHOT_EXAMPLES[field] || FEW_SHOT_EXAMPLES.general;
