@@ -59,7 +59,12 @@ export default async function handler(req, res) {
   const computed = await serverScoreFor(supabase, userId);
 
   // 마일리지는 누적·감소불가: 신규 계산값과 기존 저장값 중 큰 쪽을 쓴다(노트를 지워도 안 줄어듦).
-  const computedMileage = await serverMileageFor(supabase, userId);
+  // 앱이 보낸 값도 후보에 넣는다 — 앱은 사진·음성까지 볼 수 있어(서버는 영상분석만) 더 정확할 수 있다.
+  const appMileage = Number.isFinite(p.mileage) && p.mileage > 0 ? Math.floor(p.mileage) : 0;
+  const serverMileage = await serverMileageFor(supabase, userId);
+  const computedMileage = serverMileage === null
+    ? (appMileage > 0 ? appMileage : null)
+    : Math.max(serverMileage, appMileage);
   let mileagePatch = null;
   if (computedMileage !== null) {
     let existingMileage = 0;
