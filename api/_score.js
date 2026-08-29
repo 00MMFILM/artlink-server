@@ -34,19 +34,27 @@ export function computeScoreFromNotes(notes) {
   return Math.round((noteScore + aiScore + specializationScore + depthScore + consistencyScore) / 5);
 }
 
+// userId(내부 id) → auth_user_id → user_notes 조회. score·mileage 계산이 공유하는 단일 조회 지점.
+// auth 연결이 없으면 null(비로그인·미동기화). 조회 실패 시 예외를 던진다(호출부에서 각자 정책대로 처리).
+export async function fetchUserNotes(supabase, userId) {
+  const { data: user } = await supabase
+    .from("users").select("auth_user_id").eq("id", userId).maybeSingle();
+  if (!user?.auth_user_id) return null;
+  const { data: notes, error } = await supabase
+    .from("user_notes")
+    .select("field,tags,content,transcript,ai_comment,video_analysis,created_at")
+    .eq("auth_user_id", user.auth_user_id)
+    .eq("deleted", false)
+    .limit(2000);
+  if (error) throw error;
+  return notes;
+}
+
 // 사용자의 서버 노트로 점수를 계산한다. 노트가 없으면(비로그인·미동기화) null → 앱 값을 쓴다.
 export async function serverScoreFor(supabase, userId) {
   try {
-    const { data: user } = await supabase
-      .from("users").select("auth_user_id").eq("id", userId).maybeSingle();
-    if (!user?.auth_user_id) return null;
-    const { data: notes, error } = await supabase
-      .from("user_notes")
-      .select("field,tags,content,transcript,ai_comment,video_analysis,created_at")
-      .eq("auth_user_id", user.auth_user_id)
-      .eq("deleted", false)
-      .limit(2000);
-    if (error) throw error;
+    const notes = await fetchUserNotes(supabase, userId);
+    if (!notes) return null;
     return computeScoreFromNotes(notes);
   } catch (e) {
     console.error("[score] serverScoreFor:", e.message);

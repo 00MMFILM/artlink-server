@@ -2,6 +2,29 @@
 // anon 직접 쓰기를 대체하여 남의 프로필 변조 차단.
 import { supabase, checkAppToken, verifyOwnership, cors } from "./_profileLib.js";
 import { serverScoreFor } from "./_score.js";
+import { serverMileageFor, nonDecreasingMileage } from "./_mileage.js";
+
+// artist_profiles.mileage/level 컬럼이 아직 없는 환경(마이그레이션 미실행) 방어용 판별.
+// 컬럼 부재 시에도 프로필 동기화 자체는 깨지면 안 된다.
+export function isMissingColumnError(error) {
+  const msg = (error && error.message) || "";
+  return error?.code === "42703" || /column .* does not exist/i.test(msg);
+}
+
+// upsert 실행 + mileage/level 컬럼 부재 폴백. supabaseClient를 인자로 받아 테스트 가능하게 분리.
+export async function upsertProfileRow(supabaseClient, row, mileagePatch) {
+  const { error } = await supabaseClient.from("artist_profiles").upsert(row, { onConflict: "user_id" });
+  if (!error) return { ok: true };
+  if (mileagePatch && isMissingColumnError(error)) {
+    const { mileage, level, ...fallbackRow } = row;
+    const { error: err2 } = await supabaseClient
+      .from("artist_profiles")
+      .upsert(fallbackRow, { onConflict: "user_id" });
+    if (err2) throw err2;
+    return { ok: true, mileageSkipped: true };
+  }
+  throw error;
+}
 
 export default async function handler(req, res) {
   cors(res);
@@ -34,6 +57,26 @@ export default async function handler(req, res) {
   // 점수는 서버가 직접 계산한다(노트가 서버에 있는 경우). 구버전 앱이 옛 공식으로 계산한
   // 낮은 점수를 밀어올려 고쳐진 점수를 되돌리던 문제를 막는다. 계산 불가면 앱 값을 쓴다.
   const computed = await serverScoreFor(supabase, userId);
+
+  // 마일리지는 누적·감소불가: 신규 계산값과 기존 저장값 중 큰 쪽을 쓴다(노트를 지워도 안 줄어듦).
+  const computedMileage = await serverMileageFor(supabase, userId);
+  let mileagePatch = null;
+  if (computedMileage !== null) {
+    let existingMileage = 0;
+    try {
+      const { data: existingRow } = await supabase
+        .from("artist_profiles")
+        .select("mileage")
+        .eq("user_id", userId)
+        .maybeSingle();
+      existingMileage = existingRow?.mileage || 0;
+    } catch (e) {
+      // 컬럼 미존재 등 — 기존값을 0으로 간주하고 계속 진행(아래 upsert 단계에서 최종 방어)
+      console.error("[profile-sync mileage] existing fetch failed:", e.message);
+    }
+    mileagePatch = nonDecreasingMileage(existingMileage, computedMileage);
+  }
+
   const row = {
     user_id: userId,
     name: p.name || "익명",
@@ -61,13 +104,11 @@ export default async function handler(req, res) {
     streak_days: p.streakDays || 0,
     updated_at: new Date().toISOString(),
   };
+  if (mileagePatch) Object.assign(row, mileagePatch);
 
   try {
-    const { error } = await supabase
-      .from("artist_profiles")
-      .upsert(row, { onConflict: "user_id" });
-    if (error) throw error;
-    return res.status(200).json({ ok: true });
+    const result = await upsertProfileRow(supabase, row, mileagePatch);
+    return res.status(200).json(result);
   } catch (e) {
     console.error("[profile-sync]", e.message);
     return res.status(500).json({ error: "sync failed" });

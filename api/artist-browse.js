@@ -75,8 +75,13 @@ export default async function handler(req, res) {
       });
     }
 
-    // 민감정보 제거 후 반환
-    return res.status(200).json({ profiles: deduped.map(stripSensitive) });
+    // 마일리지·레벨 기본값 보정(마이그레이션 전 컬럼 미존재 시에도 형태 일관) 후 민감정보 제거
+    const withMileage = deduped.map((r) => ({
+      ...r,
+      mileage: r.mileage ?? 0,
+      level: r.level ?? 1,
+    }));
+    return res.status(200).json({ profiles: withMileage.map(stripSensitive) });
   } catch (e) {
     console.error("[artist-browse]", e.message);
     return res.status(500).json({ error: "browse failed" });
