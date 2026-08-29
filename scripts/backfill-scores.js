@@ -1,0 +1,105 @@
+// 종합점수 서버 일괄 재계산·백필 (2026-08-29)
+// - 앱 analyticsService.computeArtistProfile과 동일한 공식.
+// - 서버는 로컬 미디어(사진·음성)를 못 보므로 깊이는 보수적으로 계산됨 → 실제보다 낮거나 같다.
+// - 안전장치: 점수가 "오르는 경우에만" 반영(하락 0 보장), 원본 백업, JSONL 실행로그.
+// 사용: node scripts/backfill-scores.js --dry   (미리보기)
+//       node scripts/backfill-scores.js --apply (실제 반영)
+const fs = require("fs");
+const path = require("path");
+
+const APPLY = process.argv.includes("--apply");
+const ENV = path.join(__dirname, "..", ".env.local");
+const LOG_DIR = path.join(process.env.HOME, ".artlink-meta");
+const LOG = path.join(LOG_DIR, "score-backfill.jsonl");
+
+function envFrom(p, k) {
+  try {
+    const l = fs.readFileSync(p, "utf8").split("\n").find((x) => x.startsWith(k + "="));
+    return l ? l.slice(k.length + 1).trim().replace(/^["']|["']$/g, "") : null;
+  } catch { return null; }
+}
+const URL = envFrom(ENV, "SUPABASE_URL");
+const KEY = envFrom(ENV, "SUPABASE_SERVICE_KEY") || envFrom(ENV, "SUPABASE_SERVICE_ROLE_KEY");
+if (!URL || !KEY) { console.error("SUPABASE_URL/SERVICE_KEY를 .env.local에서 찾을 수 없음"); process.exit(1); }
+const H = { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" };
+
+// 앱 공식과 1:1 대응
+function computeScore(notes) {
+  const fieldCounts = {}, tagCounts = {};
+  let totalContentLength = 0, mediaRecordCount = 0;
+  notes.forEach((n) => {
+    const f = n.field || "etc";
+    fieldCounts[f] = (fieldCounts[f] || 0) + 1;
+    (n.tags || []).forEach((t) => { tagCounts[t] = (tagCounts[t] || 0) + 1; });
+    totalContentLength += (n.content || "").length + (n.transcript || "").length;
+    mediaRecordCount += n.video_analysis ? 1 : 0; // 서버 가시 범위
+  });
+  const aiCount = notes.filter((n) => n.ai_comment).length;
+  const noteScore = Math.min(100, notes.length * 5);
+  const aiScore = Math.min(100, aiCount * 10);
+  const primaryFieldCount = Object.values(fieldCounts).reduce((m, v) => Math.max(m, v), 0);
+  const specializationScore = Math.min(100, Math.max(
+    Object.keys(fieldCounts).length * 20,
+    Object.keys(tagCounts).length * 8,
+    primaryFieldCount * 8,
+  ));
+  const depthScore = Math.min(100, Math.round(totalContentLength / 100) + mediaRecordCount * 5);
+  const dates = [...new Set(notes.map((n) => new Date(n.created_at).toDateString()))];
+  const consistencyScore = notes.length < 2 ? 0 : Math.min(100, dates.length * 8);
+  return Math.round((noteScore + aiScore + specializationScore + depthScore + consistencyScore) / 5);
+}
+
+async function get(pathQ) {
+  const r = await fetch(`${URL}/rest/v1/${pathQ}`, { headers: H });
+  if (!r.ok) throw new Error(`GET ${pathQ} → ${r.status} ${(await r.text()).slice(0, 200)}`);
+  return r.json();
+}
+
+(async () => {
+  const profiles = await get("artist_profiles?select=user_id,name,score&limit=500");
+  const users = await get("users?select=id,auth_user_id&limit=5000");
+  const authBy = new Map(users.map((u) => [u.id, u.auth_user_id]));
+  const notes = await get("user_notes?select=auth_user_id,field,tags,content,transcript,ai_comment,video_analysis,created_at&deleted=eq.false&limit=20000");
+  const byAuth = new Map();
+  notes.forEach((n) => {
+    if (!byAuth.has(n.auth_user_id)) byAuth.set(n.auth_user_id, []);
+    byAuth.get(n.auth_user_id).push(n);
+  });
+
+  const plan = [];
+  profiles.forEach((p) => {
+    const ns = byAuth.get(authBy.get(p.user_id));
+    if (!ns || !ns.length) return;
+    const next = computeScore(ns);
+    const cur = p.score || 0;
+    plan.push({ user_id: p.user_id, name: p.name, from: cur, to: next, willUpdate: next > cur });
+  });
+
+  const ups = plan.filter((x) => x.willUpdate);
+  console.log(`대상 프로필 ${plan.length}명 / 상향 반영 ${ups.length}명 / 변화 없음 ${plan.length - ups.length}명`);
+  ups.sort((a, b) => (b.to - b.from) - (a.to - a.from))
+    .forEach((x) => console.log(`  ${x.name}: ${x.from} → ${x.to} (+${x.to - x.from})`));
+
+  if (!APPLY) { console.log("\n[미리보기] 실제 반영하려면 --apply"); return; }
+
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+  const stamp = new Date().toISOString();
+  // 롤백용 원본 스냅샷
+  const backup = path.join(LOG_DIR, `score-backup-${stamp.slice(0, 19).replace(/[:T]/g, "")}.json`);
+  fs.writeFileSync(backup, JSON.stringify(plan, null, 2));
+  console.log(`\n원본 백업: ${backup}`);
+
+  let ok = 0, fail = 0;
+  for (const x of ups) {
+    const r = await fetch(`${URL}/rest/v1/artist_profiles?user_id=eq.${encodeURIComponent(x.user_id)}`, {
+      method: "PATCH", headers: { ...H, Prefer: "return=minimal" },
+      body: JSON.stringify({ score: x.to }),
+    });
+    const line = { ts: new Date().toISOString(), action: "score_backfill", user_id: x.user_id, name: x.name, from: x.from, to: x.to, status: r.ok ? "ok" : `http_${r.status}` };
+    if (r.ok) ok++; else { fail++; line.error = (await r.text()).slice(0, 200); }
+    fs.appendFileSync(LOG, JSON.stringify(line) + "\n");
+  }
+  fs.appendFileSync(LOG, JSON.stringify({ ts: new Date().toISOString(), action: "score_backfill_summary", updated: ok, failed: fail, backup }) + "\n");
+  console.log(`반영 완료: 성공 ${ok}명 / 실패 ${fail}명`);
+  console.log(`실행로그: ${LOG}`);
+})().catch((e) => { console.error("실패:", e.message); process.exit(1); });

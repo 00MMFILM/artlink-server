@@ -1,6 +1,7 @@
 // 프로필 생성/수정 — 소유권 토큰 검증 후 service_role로 upsert.
 // anon 직접 쓰기를 대체하여 남의 프로필 변조 차단.
 import { supabase, checkAppToken, verifyOwnership, cors } from "./_profileLib.js";
+import { serverScoreFor } from "./_score.js";
 
 export default async function handler(req, res) {
   cors(res);
@@ -30,6 +31,9 @@ export default async function handler(req, res) {
   }
 
   const p = profile;
+  // 점수는 서버가 직접 계산한다(노트가 서버에 있는 경우). 구버전 앱이 옛 공식으로 계산한
+  // 낮은 점수를 밀어올려 고쳐진 점수를 되돌리던 문제를 막는다. 계산 불가면 앱 값을 쓴다.
+  const computed = await serverScoreFor(supabase, userId);
   const row = {
     user_id: userId,
     name: p.name || "익명",
@@ -52,7 +56,7 @@ export default async function handler(req, res) {
     interests: p.interests || [],
     photo_url: p.photoUrl || null,
     photos: p.photos || [],
-    score: p.score || 0,
+    score: computed !== null ? computed : (p.score || 0),
     notes_count: p.notesCount || 0,
     streak_days: p.streakDays || 0,
     updated_at: new Date().toISOString(),
