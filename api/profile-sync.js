@@ -56,7 +56,10 @@ export default async function handler(req, res) {
   const p = profile;
   // 점수는 서버가 직접 계산한다(노트가 서버에 있는 경우). 구버전 앱이 옛 공식으로 계산한
   // 낮은 점수를 밀어올려 고쳐진 점수를 되돌리던 문제를 막는다. 계산 불가면 앱 값을 쓴다.
-  const computed = await serverScoreFor(supabase, userId);
+  const computedScore = await serverScoreFor(supabase, userId);
+  // 앱이 보낸 점수도 후보에 넣는다. 앱은 사진·음성 첨부까지 세지만 서버는 볼 수 없어서,
+  // 서버 값만 쓰면 사용자 화면(앱 계산)과 B2B(서버 값)가 어긋난다(2026-08-30 제보).
+  const appScore = Number.isFinite(p.score) && p.score > 0 ? Math.floor(p.score) : 0;
 
   // 마일리지는 누적·감소불가: 신규 계산값과 기존 저장값 중 큰 쪽을 쓴다(노트를 지워도 안 줄어듦).
   // 앱이 보낸 값도 후보에 넣는다 — 앱은 사진·음성까지 볼 수 있어(서버는 영상분석만) 더 정확할 수 있다.
@@ -65,22 +68,31 @@ export default async function handler(req, res) {
   const computedMileage = serverMileage === null
     ? (appMileage > 0 ? appMileage : null)
     : Math.max(serverMileage, appMileage);
-  let mileagePatch = null;
-  if (computedMileage !== null) {
-    let existingMileage = 0;
+  // 기존 저장값은 점수·마일리지 양쪽 판정에 모두 필요하므로 조건 밖에서 한 번만 조회한다.
+  // (조건 안에 두면 노트가 없는 사용자에서 existingScore가 0으로 남아 점수가 깎인다)
+  let existingScore = 0;
+  let existingMileage = 0;
+  try {
+    const { data: existingRow } = await supabase
+      .from("artist_profiles")
+      .select("mileage, score")
+      .eq("user_id", userId)
+      .maybeSingle();
+    existingMileage = existingRow?.mileage || 0;
+    existingScore = existingRow?.score || 0;
+  } catch (e) {
+    // mileage 컬럼 미존재 등 — score만이라도 살린다
     try {
-      const { data: existingRow } = await supabase
-        .from("artist_profiles")
-        .select("mileage")
-        .eq("user_id", userId)
-        .maybeSingle();
-      existingMileage = existingRow?.mileage || 0;
-    } catch (e) {
-      // 컬럼 미존재 등 — 기존값을 0으로 간주하고 계속 진행(아래 upsert 단계에서 최종 방어)
-      console.error("[profile-sync mileage] existing fetch failed:", e.message);
+      const { data: r2 } = await supabase
+        .from("artist_profiles").select("score").eq("user_id", userId).maybeSingle();
+      existingScore = r2?.score || 0;
+    } catch (_) {
+      console.error("[profile-sync] existing fetch failed:", e.message);
     }
-    mileagePatch = nonDecreasingMileage(existingMileage, computedMileage);
   }
+  const mileagePatch = computedMileage !== null
+    ? nonDecreasingMileage(existingMileage, computedMileage)
+    : null;
 
   const row = {
     user_id: userId,
@@ -104,7 +116,7 @@ export default async function handler(req, res) {
     interests: p.interests || [],
     photo_url: p.photoUrl || null,
     photos: p.photos || [],
-    score: computed !== null ? computed : (p.score || 0),
+    score: Math.max(existingScore, computedScore || 0, appScore),
     notes_count: p.notesCount || 0,
     streak_days: p.streakDays || 0,
     updated_at: new Date().toISOString(),
@@ -113,7 +125,13 @@ export default async function handler(req, res) {
 
   try {
     const result = await upsertProfileRow(supabase, row, mileagePatch);
-    return res.status(200).json(result);
+    // 앱이 이 값을 그대로 표시하면 사용자 화면과 B2B 대시보드가 항상 같아진다.
+    return res.status(200).json({
+      ...result,
+      score: row.score,
+      mileage: result.mileageSkipped ? undefined : row.mileage,
+      level: result.mileageSkipped ? undefined : row.level,
+    });
   } catch (e) {
     console.error("[profile-sync]", e.message);
     return res.status(500).json({ error: "sync failed" });
