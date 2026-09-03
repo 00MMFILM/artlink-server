@@ -16,6 +16,15 @@ const VALID_EVENTS = new Set([
   "browse_skipped",
   "eula_accepted",
   "profile_registered",
+  // 앱이 이미 보내고 있었지만 화이트리스트에 없어 400으로 버려지던 이벤트 (2026-09-03 실측)
+  "guest_entered",
+  "reminder_set",
+  "ai_video_profile_interest",
+  // 1.11.1 활성화 측정: 첫 노트 저장·첫 AI 피드백·게스트 가입 유도 노출/탭
+  "note_saved",
+  "ai_feedback_done",
+  "signup_nudge_shown",
+  "signup_nudge_tapped",
 ]);
 
 export default async function handler(req, res) {
