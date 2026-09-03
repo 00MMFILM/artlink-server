@@ -14,7 +14,7 @@ import {
 } from "../api/_mileage.js";
 // profile-sync.js는 import 시점에 _profileLib.js가 supabase 클라이언트를 생성한다.
 // 정적 import는 호이스팅되어 위 process.env 설정보다 먼저 평가되므로 동적 import로 늦춘다.
-const { upsertProfileRow, isMissingColumnError } = await import("../api/profile-sync.js");
+const { upsertProfileRow, isMissingColumnError, resolveMileage } = await import("../api/profile-sync.js");
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra = "") {
@@ -146,6 +146,20 @@ ok("DB 장애 시 null(동기화 차단 안 함)", (await serverMileageFor(mockD
 ok("42703 코드 인식", isMissingColumnError({ code: "42703", message: "x" }));
 ok('"column ... does not exist" 문구 인식', isMissingColumnError({ message: 'column "level" of relation "artist_profiles" does not exist' }));
 ok("무관한 에러는 false", !isMissingColumnError({ code: "XX000", message: "db down" }));
+
+
+// ── 회귀: 서버 결과(객체)+앱 값(숫자) 병합이 NaN/null을 만들면 안 된다 (2026-09-03 사고)
+{
+  const srv = computeMileageFromNotes([{ content: "a".repeat(300), ai_comment: "x", created_at: "2026-08-01" }]);
+  const both = nonDecreasingMileage(1333, resolveMileage(srv, 100));
+  ok("서버+앱 병합 → 숫자", Number.isFinite(both.mileage) && both.mileage === 1333 && both.level === 6, JSON.stringify(both));
+  const appOnly = nonDecreasingMileage(536, resolveMileage(null, 600));
+  ok("앱 값만 → 숫자", appOnly.mileage === 600 && appOnly.level === 4, JSON.stringify(appOnly));
+  const bigger = nonDecreasingMileage(10, resolveMileage(srv, 20));
+  ok("서버가 더 크면 서버 값", bigger.mileage === srv.mileage, JSON.stringify(bigger));
+  ok("둘 다 없으면 null(저장값 유지)", resolveMileage(null, 0) === null);
+  ok("null 저장 절대 금지", !JSON.stringify([both, appOnly, bigger]).includes("null"));
+}
 
 console.log(fail === 0 ? "\nALL PASS" : `\n${fail}건 실패`);
 process.exit(fail === 0 ? 0 : 1);

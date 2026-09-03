@@ -26,6 +26,16 @@ export async function upsertProfileRow(supabaseClient, row, mileagePatch) {
   throw error;
 }
 
+// 서버 계산 결과({mileage,...} 객체 또는 null)와 앱이 보낸 숫자를 합쳐 nonDecreasingMileage에 넘길
+// {mileage} 형태로 만든다. 둘 다 없으면 null(저장값 유지).
+// 2026-08-30~09-03 사고: 객체를 숫자와 Math.max해 NaN→DB null로 저장, 동기화한 전원 Lv1로 초기화됨.
+export function resolveMileage(serverResult, appMileage) {
+  const server = serverResult && Number.isFinite(serverResult.mileage) ? serverResult.mileage : null;
+  const app = Number.isFinite(appMileage) && appMileage > 0 ? appMileage : 0;
+  if (server === null && app === 0) return null;
+  return { mileage: Math.max(server || 0, app) };
+}
+
 export default async function handler(req, res) {
   cors(res);
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -64,10 +74,7 @@ export default async function handler(req, res) {
   // 마일리지는 누적·감소불가: 신규 계산값과 기존 저장값 중 큰 쪽을 쓴다(노트를 지워도 안 줄어듦).
   // 앱이 보낸 값도 후보에 넣는다 — 앱은 사진·음성까지 볼 수 있어(서버는 영상분석만) 더 정확할 수 있다.
   const appMileage = Number.isFinite(p.mileage) && p.mileage > 0 ? Math.floor(p.mileage) : 0;
-  const serverMileage = await serverMileageFor(supabase, userId);
-  const computedMileage = serverMileage === null
-    ? (appMileage > 0 ? appMileage : null)
-    : Math.max(serverMileage, appMileage);
+  const computedMileage = resolveMileage(await serverMileageFor(supabase, userId), appMileage);
   // 기존 저장값은 점수·마일리지 양쪽 판정에 모두 필요하므로 조건 밖에서 한 번만 조회한다.
   // (조건 안에 두면 노트가 없는 사용자에서 existingScore가 0으로 남아 점수가 깎인다)
   let existingScore = 0;
