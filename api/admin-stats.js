@@ -16,6 +16,48 @@ function normPlatform(p) {
   return "other";
 }
 
+// 반복 연습 집계 (2단계, 2026-09-13). schema-practice-events.sql 마이그레이션 전에는
+// practice_repeat_7d 뷰가 없다(42P01) — 그때는 500이 아니라 available:false로 응답한다.
+async function getPracticeStats() {
+  try {
+    const { data: cohorts, error: viewError } = await supabase
+      .from("practice_repeat_7d")
+      .select("*");
+    if (viewError) {
+      if (viewError.code === "42P01") return { available: false };
+      throw viewError;
+    }
+
+    const since = new Date(Date.now() - 28 * 86400000).toISOString();
+    const { data: recentRows, error: recentError } = await supabase
+      .from("practice_events")
+      .select("device_id, kind")
+      .eq("event", "practice_completed")
+      .gte("occurred_at", since);
+    if (recentError) throw recentError;
+
+    const devices = new Set();
+    const byKind = {};
+    for (const r of recentRows || []) {
+      devices.add(r.device_id);
+      byKind[r.kind] = (byKind[r.kind] || 0) + 1;
+    }
+
+    return {
+      available: true,
+      repeat7dByWeek: cohorts || [],
+      last28d: {
+        completedDevices: devices.size,
+        completedEvents: (recentRows || []).length,
+        byKind,
+      },
+    };
+  } catch (e) {
+    console.error("[admin-stats] practice:", e.message);
+    return { available: false };
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -71,6 +113,8 @@ export default async function handler(req, res) {
     const totals = { iOS: 0, Android: 0, other: 0 };
     for (const d in first) totals[first[d].platform]++;
 
+    const practice = await getPracticeStats();
+
     return res.status(200).json({
       totalDevices: Object.keys(first).length,
       totalsByPlatform: totals,
@@ -78,6 +122,7 @@ export default async function handler(req, res) {
       newByMonth,
       activeByMonth,
       rowsScanned: rows.length,
+      practice,
     });
   } catch (e) {
     console.error("[admin-stats]", e.message);
