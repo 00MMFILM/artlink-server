@@ -17,7 +17,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export const config = { maxDuration: 300 };
 
 // 생성 메타 — 노트에 함께 저장되어 품질 비교·학습 데이터 필터의 기준이 된다
-const MODEL = "claude-sonnet-4-6";
+import { paramChain, textOf, isRefusal } from "./_model.js";
 const PROMPT_VERSION = "2026-08-13.1";
 
 // ── Gemini 영상 관찰 경로 ──
@@ -184,8 +184,10 @@ export default async function handler(req, res) {
   // 영상 판정 — 로그인 유저는 Authorization, 게스트는 X-Device-Id로 식별
   const user = await identifyUser(req);
   let guestId = null;
+  let isPremium = false;
   if (user) {
     const quota = await checkVideoQuota(user.id);
+    isPremium = !!quota.premium;
     if (!quota.allowed) {
       return res.status(429).json({
         error: "quota_exceeded",
@@ -324,21 +326,33 @@ ${fewShot}`;
 
     // 시스템은 요청 간 동일 → 캐싱 (Sonnet 4.6 최소 프리픽스 2048토큰)
     // Sonnet 4.6은 어시스턴트 프리필 미지원(400) — "📌 시작"은 시스템 프롬프트 지시로 대체
-    const msg = await client.messages.create({
-      model: MODEL,
-      max_tokens: 8192,
-      temperature: 0.7,
-      system: [
-        { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
-        ...(languageOverride ? [{ type: "text", text: languageOverride }] : []),
-      ],
-      messages: [{ role: "user", content }],
-    });
+    let msg = null;
+    let usedModel = null;
+    for (const params of paramChain(isPremium)) {
+      try {
+        const m = await client.messages.create({
+          ...params,
+          system: [
+            { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
+            ...(languageOverride ? [{ type: "text", text: languageOverride }] : []),
+          ],
+          messages: [{ role: "user", content }],
+        });
+        console.log("[analyze-video] usage:", params.model, JSON.stringify(m.usage)); // 캐시·비용 모니터링
+        if (isRefusal(m)) {
+          console.error("[analyze-video] refusal:", params.model, JSON.stringify(m.stop_details || {}));
+          continue;
+        }
+        msg = m;
+        usedModel = params.model;
+        break;
+      } catch (modelErr) {
+        console.error("[analyze-video] model error:", params.model, modelErr.status, modelErr.message);
+      }
+    }
+    if (!msg) return res.status(500).json({ error: "Video analysis failed" });
 
-    // 캐시 동작 및 비용 모니터링용
-    console.log("[analyze-video] usage:", JSON.stringify(msg.usage));
-
-    const rawText = msg.content[0]?.text || "";
+    const rawText = textOf(msg);
     // 프리필 제거 후 모델이 직접 📌로 시작 — 혹시 누락하면 보정 (앱 UI 일관성)
     let analysis = rawText.startsWith("📌") ? rawText : "📌 " + rawText;
 
@@ -354,7 +368,7 @@ ${fewShot}`;
     else if (guestId) await consumeGuest(guestId);
     return res
       .status(200)
-      .json({ analysis, meta: { model: MODEL, promptVersion: PROMPT_VERSION, pipeline } });
+      .json({ analysis, meta: { model: usedModel, promptVersion: PROMPT_VERSION, pipeline } });
   } catch (error) {
     console.error("[analyze-video] Error:", error.message);
     return res.status(500).json({ error: "Video analysis failed" });

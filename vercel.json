@@ -5,13 +5,18 @@
       "maxDuration": 120
     },
     "api/ai-analyze.js": {
-      "maxDuration": 60
+      "maxDuration": 120
     }
   },
   "redirects": [
     {
       "source": "/",
-      "has": [{ "type": "host", "value": "art-link.kr" }],
+      "has": [
+        {
+          "type": "host",
+          "value": "art-link.kr"
+        }
+      ],
       "destination": "/launch",
       "permanent": false
     }
@@ -25,7 +30,12 @@
   "headers": [
     {
       "source": "/api/(.*)",
-      "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }]
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
     }
   ]
 }

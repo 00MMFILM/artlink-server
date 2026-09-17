@@ -14,7 +14,7 @@ import { hasDataConsent, archivePhotos, titleHash } from "./_archive.js";
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // 생성 메타 — 노트에 함께 저장되어 나중에 품질 비교·학습 데이터 필터의 기준이 된다
-const MODEL = "claude-sonnet-4-6";
+import { paramChain, textOf, isRefusal } from "./_model.js";
 const PROMPT_VERSION = "2026-08-15.1";
 
 // 성장 궤적 분석용 5축 점수 — 신버전 앱(wantScores)에서만 요청. 구버전 앱엔 안 붙여 마커 노출 방지.
@@ -161,8 +161,10 @@ export default async function handler(req, res) {
   // 사용량 판정 — 로그인 유저는 Authorization, 게스트는 X-Device-Id로 식별
   const user = await identifyUser(req);
   let guestId = null;
+  let isPremium = false;
   if (user) {
     const quota = await checkTextQuota(user.id);
+    isPremium = !!quota.premium;
     if (!quota.allowed) {
       return res.status(429).json({
         error: "quota_exceeded",
@@ -275,29 +277,41 @@ ${fewShot}${wantScores ? SCORING_INSTRUCTION : ""}`;
       res.setHeader("Cache-Control", "no-cache, no-transform");
       res.setHeader("X-Accel-Buffering", "no");
       // 생성 메타 — 앱이 노트 저장 시 함께 기록 (스트림은 본문이 텍스트라 헤더로 전달)
-      res.setHeader("X-AL-Model", MODEL);
+      const chain = paramChain(isPremium);
+      res.setHeader("X-AL-Model", chain[0].model);
       res.setHeader("X-AL-Prompt-Version", PROMPT_VERSION);
       let full = "";
       try {
-        // Sonnet 4.6은 어시스턴트 프리필 미지원(400) — "📌 시작"은 시스템 프롬프트 지시로 대체됨
-        const stream = await client.messages.stream({
-          model: MODEL,
-          max_tokens: 8192,
-          temperature: 0.7,
-          system: systemBlocks,
-          messages: [{ role: "user", content: userContent }],
-        });
-        for await (const event of stream) {
-          if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
-            res.write(event.delta.text);
-            full += event.delta.text;
+        // 프리미엄(Opus 5) 실패·거절 시 무료 모델(Sonnet 5)로 1회 재시도 — 본문이 아직 안 나간 경우에만
+        for (const params of chain) {
+          try {
+            const stream = await client.messages.stream({
+              ...params,
+              system: systemBlocks,
+              messages: [{ role: "user", content: userContent }],
+            });
+            for await (const event of stream) {
+              if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+                res.write(event.delta.text);
+                full += event.delta.text;
+              }
+            }
+            const finalMsg = await stream.finalMessage();
+            console.log("[ai-analyze] stream usage:", params.model, JSON.stringify(finalMsg.usage));
+            if (isRefusal(finalMsg) && !full.trim()) {
+              console.error("[ai-analyze] refusal:", params.model, JSON.stringify(finalMsg.stop_details || {}));
+              continue;
+            }
+            if (finalMsg.stop_reason === "max_tokens") {
+              res.write("\n\n---\n(분석이 길어져 일부 생략되었습니다)");
+            }
+            break;
+          } catch (modelErr) {
+            console.error("[ai-analyze] stream model error:", params.model, modelErr.status, modelErr.message);
+            if (full.trim()) throw modelErr; // 이미 본문이 나갔으면 재시도하지 않는다
           }
         }
-        const finalMsg = await stream.finalMessage();
-        console.log("[ai-analyze] stream usage:", JSON.stringify(finalMsg.usage));
-        if (finalMsg.stop_reason === "max_tokens") {
-          res.write("\n\n---\n(분석이 길어져 일부 생략되었습니다)");
-        }
+        if (full.trim().length < 10) throw new Error("empty analysis");
         if (user) await consumeText(user.id); // 성공 시에만 카운트 (await로 서버리스 freeze 전 저장 보장)
         else if (guestId) await consumeGuest(guestId);
       } catch (streamErr) {
@@ -309,18 +323,30 @@ ${fewShot}${wantScores ? SCORING_INSTRUCTION : ""}`;
     }
 
     // ── 비스트리밍 경로 (구버전 앱 호환) ──
-    const msg = await client.messages.create({
-      model: MODEL,
-      max_tokens: 8192,
-      temperature: 0.7,
-      system: systemBlocks,
-      messages: [{ role: "user", content: userContent }],
-    });
+    let msg = null;
+    let usedModel = null;
+    for (const params of paramChain(isPremium)) {
+      try {
+        const m = await client.messages.create({
+          ...params,
+          system: systemBlocks,
+          messages: [{ role: "user", content: userContent }],
+        });
+        console.log("[ai-analyze] usage:", params.model, JSON.stringify(m.usage)); // 캐시·비용 모니터링
+        if (isRefusal(m)) {
+          console.error("[ai-analyze] refusal:", params.model, JSON.stringify(m.stop_details || {}));
+          continue;
+        }
+        msg = m;
+        usedModel = params.model;
+        break;
+      } catch (modelErr) {
+        console.error("[ai-analyze] model error:", params.model, modelErr.status, modelErr.message);
+      }
+    }
+    if (!msg) return res.status(500).json({ error: "AI analysis failed" });
 
-    // 캐시 동작 및 비용 모니터링용
-    console.log("[ai-analyze] usage:", JSON.stringify(msg.usage));
-
-    const rawText = msg.content[0]?.text || "";
+    const rawText = textOf(msg);
     // 프리필 제거 후 모델이 직접 📌로 시작 — 혹시 누락하면 보정 (앱 UI 일관성)
     let analysis = rawText.startsWith("📌") ? rawText : "📌 " + rawText;
 
@@ -337,7 +363,7 @@ ${fewShot}${wantScores ? SCORING_INSTRUCTION : ""}`;
     else if (guestId) await consumeGuest(guestId);
     return res
       .status(200)
-      .json({ analysis, meta: { model: MODEL, promptVersion: PROMPT_VERSION } });
+      .json({ analysis, meta: { model: usedModel, promptVersion: PROMPT_VERSION } });
   } catch (error) {
     console.error("[ai-analyze] Error:", error.message, error.status, error.body);
     return res.status(500).json({ error: "AI analysis failed", detail: error.message });
