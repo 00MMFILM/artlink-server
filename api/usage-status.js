@@ -6,6 +6,7 @@ import {
   identifyUser,
   checkTextQuota,
   checkVideoQuota,
+  getPremiumInfo,
 } from "./_usage.js";
 
 export default async function handler(req, res) {
@@ -20,14 +21,16 @@ export default async function handler(req, res) {
   const user = await identifyUser(req);
   if (!user) return res.status(401).json({ error: "auth_required" });
 
-  const [text, video] = await Promise.all([
+  const [text, video, premium] = await Promise.all([
     checkTextQuota(user.id),
     checkVideoQuota(user.id),
+    getPremiumInfo(user.id),
   ]);
 
   return res.status(200).json({
     unlimited: !!(text.premium || video.premium),
     text: { allowed: text.allowed, used: text.used ?? 0, max: text.max ?? 0 },
     video: { allowed: video.allowed, used: video.used ?? 0, max: video.max ?? 0 },
+    premium,
   });
 }

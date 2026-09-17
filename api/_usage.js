@@ -66,6 +66,37 @@ async function isUnlimited(userId) {
   return !!data;
 }
 
+// 앱 "프리미엄 이용 중" 표시용 구독 상태 조회. premium_members 1행을 그대로 반영.
+// note 형식(rc-webhook.js): 구독 "rc:<TYPE>:<product_id>:<ISO>", 만료/해지 "rc:<TYPE>:<ISO>"
+// (product_id 없음) — product_id에 "monthly"/"yearly" 포함 여부로 plan 판정, comp는 plan 없음.
+// 실패·미등재 시 비활성으로 판정 (판정 실패가 서비스를 막으면 안 됨 — 기존 관례).
+export async function getPremiumInfo(userId) {
+  const empty = { active: false, kind: null, plan: null, since: null };
+  if (!supabase) return empty;
+  try {
+    const { data } = await supabase
+      .from("premium_members")
+      .select("kind, note, created_at, active")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!data) return empty;
+    let plan = null;
+    if (data.kind === "sub" && typeof data.note === "string") {
+      if (data.note.includes("monthly")) plan = "monthly";
+      else if (data.note.includes("yearly")) plan = "yearly";
+    }
+    return {
+      active: !!data.active,
+      kind: data.kind ?? null,
+      plan,
+      since: data.created_at ?? null,
+    };
+  } catch (e) {
+    console.error("[usage] getPremiumInfo:", e.message);
+    return empty;
+  }
+}
+
 // 텍스트 피드백 판정. { allowed, used, max, premium? }
 export async function checkTextQuota(userId) {
   if (!supabase) return { allowed: true };
