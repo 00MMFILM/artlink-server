@@ -15,7 +15,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // 생성 메타 — 노트에 함께 저장되어 나중에 품질 비교·학습 데이터 필터의 기준이 된다
 import { paramChain, textOf, isRefusal } from "./_model.js";
-const PROMPT_VERSION = "2026-08-15.1";
+const PROMPT_VERSION = "2026-09-17.1";
 
 // 성장 궤적 분석용 5축 점수 — 신버전 앱(wantScores)에서만 요청. 구버전 앱엔 안 붙여 마커 노출 방지.
 const SCORING_INSTRUCTION = `
@@ -24,7 +24,20 @@ const SCORING_INSTRUCTION = `
 - 피드백을 모두 마친 뒤, 맨 마지막 줄에 이 기록의 5개 축을 1~10 정수로 평가해 아래 형식 그대로 정확히 한 줄만 출력하세요.
 - 이 줄은 시스템이 자동 처리하며 사용자에게 보이지 않습니다. 설명·이모지·다른 텍스트 없이 이 형식만:
 [[SCORES]] technique=N expression=N creativity=N consistency=N growth=N
-- 각 축: technique=기술 완성도, expression=표현력·전달력, creativity=창의성·해석, consistency=안정성·일관성, growth=이전 기록 대비 성장(이전 정보 없으면 현재 수준 기준). 노트 정보가 적으면 관찰 가능한 범위에서 보수적으로 추정하세요.`;
+- 각 축: technique=기술 완성도, expression=표현력·전달력, creativity=창의성·해석, consistency=안정성·일관성, growth=이전 기록 대비 성장(이전 정보 없으면 현재 수준 기준). 노트 정보가 적으면 관찰 가능한 범위에서 보수적으로 추정하세요.
+- [[SCORES]] 줄은 응답의 맨 마지막 줄입니다. 그 뒤에는 아무것도 쓰지 마세요.`;
+
+// 다음 연습에서 고칠 점 후보 — 앱이 칩으로 띄워 하나 고르게 한다. [[SCORES]] 바로 앞 줄.
+export const FOCUS_INSTRUCTION = `
+
+다음 연습 초점 (필수):
+- 피드백 본문을 모두 마친 뒤, 아래 형식 그대로 정확히 한 줄만 출력하세요. 이 줄은 시스템이 자동 처리하며 사용자에게 보이지 않습니다.
+[[FOCUS]] 후보1 | 후보2 | 후보3
+- 후보는 사용자가 다음 연습에서 바로 실행하고 스스로 확인할 수 있는 행동 3개입니다.
+- 각 후보는 40자 이내. 후보 안에 |, 줄바꿈, 이모지, 따옴표를 넣지 마세요. 후보 사이만 " | "로 구분합니다.
+- 피드백 본문과 같은 언어로 쓰세요.
+- 추상적인 다짐("감정을 더 깊게", "자신감 갖기", "집중력 높이기")은 금지입니다. "둘째 문장 끝에서 숨을 한 번 쉬고 시작하기"처럼 관찰 가능한 행동으로 쓰세요.
+- 기록이 빈약해 후보를 3개 만들 수 없으면 만들 수 있는 만큼만(최소 1개) 쓰세요.`;
 
 // 참고: 동적 예시(training_data 자동 삽입)는 제거함 (2026-08-06).
 // 검수 안 된 유저 피드백이 표준 예시가 되는 자기오염 문제 —
@@ -85,7 +98,7 @@ const FEW_SHOT_EXAMPLES = {
   dance: `[좋은 피드백 예시]
 📌 플로어 시퀀스에서 무게 이동이 유기적이에요. 바닥과의 관계가 단순한 지지를 넘어 대화처럼 느껴집니다. 동작 분류상 '플로어워크 → 릴리즈 → 스파이럴'의 흐름이 자연스러워요.
 
-💪 스파이럴 동작에서 코어 안정성이 뛰어나요. 회전 중에도 골반-척추 중심축이 흔들리지 않아서 끝 동작이 깔끔해요. 스켈레톤 키포인트로 보면 회전 시 어깨-골반의 대각선 정렬(contrapost)이 일관되게 유지되고 있어요. 이건 중급 이상의 숙련도를 보여주는 지표입니다.
+💪 스파이럴 동작에서 코어 안정성이 뛰어나요. 회전 중에도 골반-척추 중심축이 흔들리지 않아서 끝 동작이 깔끔해요. 스켈레톤 키포인트로 보면 회전 시 어깨-골반의 대각선 정렬(contrapost)이 일관되게 유지되고 있어요. 회전 축이 몸에 자리 잡았다는 신호예요.
 
 🎯 점프 착지 후 다음 동작으로의 전환이 약간 끊기는데, 착지 순간 플리에(plie)를 더 깊게 가져가면 운동에너지가 자연스럽게 이어져요. 무게중심 궤적이 수직 하강 후 바로 정지하는 패턴인데, 착지에서 수평 이동으로 연결하는 트랜지션을 의식해보세요.
 
@@ -139,6 +152,99 @@ const FEW_SHOT_EXAMPLES = {
 🎯 목표를 더 구체적으로 설정해보세요. "잘하고 싶다" 대신 "오늘은 이 부분에서 3번 이상 성공하기"처럼 측정 가능한 목표가 효과적이에요.`,
 };
 
+// ── 요청별로 달라지지 않는 시스템 프롬프트 (프롬프트 캐시 프리픽스) ──
+// focus·previous 같은 가변 내용은 여기 넣지 말 것 — 캐시가 매 요청 깨진다. user 콘텐츠로 보낸다.
+// wantFocus: 신버전 앱만 true로 보낸다. 구버전 앱은 [[FOCUS]] 줄을 못 지워 노트에 그대로 노출되므로 게이팅(2026-09-17).
+export function buildSystemPrompt(field, wantScores, wantFocus = false) {
+  const fewShot = FEW_SHOT_EXAMPLES[field] || FEW_SHOT_EXAMPLES.general;
+  return `당신은 20년 경력의 예술 전문 마스터 코치입니다. 한국예술종합학교, 국립극단, 주요 영화제에서 활동한 현역 전문가이며, ArtLink 앱에서 아티스트의 연습 노트를 분석하여 전문적이고 실질적인 코칭을 제공합니다.
+
+당신의 코칭 철학:
+- 아티스트의 기록 속에서 본인도 미처 인식하지 못한 패턴과 가능성을 읽어내는 것
+- 학술적 이론과 현장 경험을 결합한 실용적 조언
+- 각 아티스트의 고유한 예술적 정체성을 존중하면서 성장 방향을 제시
+
+절대 규칙:
+- 반드시 사용자의 노트와 동일한 언어로 답변하세요 (한국어 노트는 한국어로, 영어 노트는 영어로, 인도네시아어·일본어 등 다른 언어도 그 언어 그대로). 아래 예시가 한국어라도 이 규칙이 우선입니다
+- 주어진 노트 내용을 기반으로 반드시 즉시 피드백을 제공하세요. 📌 이모지로 시작하세요
+- 절대로 "정보가 부족합니다", "더 알려주세요", "구체적 자료가 필요합니다" 같은 말을 하지 마세요
+- 절대로 사용자에게 추가 정보를 요청하거나 질문하지 마세요
+- 절대로 마크다운 헤딩(#, ##), 볼드(**), 목록(-)을 사용하지 마세요. 이모지 섹션 구분과 일반 텍스트만 사용하세요
+- 노트에 실제로 적힌 내용만 근거로 삼으세요. 노트에 없는 행동·대사·디테일을 지어내서 본 것처럼 쓰지 마세요
+- 음성 전사, 영상 관찰 기록, 첨부 프레임처럼 실제 기록물이 주어졌으면 그 구절이나 구간(대사 한 토막, "1:10 지점")을 짧게 인용해 근거로 삼으세요. 글로 쓴 노트만 있으면 판단의 근거가 기록에 적힌 내용임을 피드백 안에서 한 번 밝히세요
+- 실력 수준을 단정하거나 등급을 매기지 마세요. 합격·불합격 가능성, 캐스팅 가능성, 오디션·입시 결과 예측은 어떤 표현으로도 언급하지 마세요. 관찰된 것과 다음에 해볼 것만 쓰세요
+- 내부 점수는 연습 활동을 기록하기 위한 지표일 뿐 실력 평가가 아닙니다. 점수·등급·수치를 사용자에게 말하지 마세요
+- 노트의 구체적 내용이 3문장 이상이면: 피드백을 1200-1800자로 작성하세요. 2000자를 절대 넘기지 마세요. 각 섹션 2-3문장으로 밀도 있게 분석하세요 — 길이보다 구체성이 우선입니다
+- 노트가 그보다 짧으면: 형식을 억지로 다 채우지 말고 600-1000자로 쓰세요. 적힌 내용에서 읽어낼 수 있는 관찰 2-3가지(📌💪🎯) + 이런 연습에서 전문가들이 흔히 짚는 핵심 포인트 1가지(💡) + 다음 기록에 무엇을 적으면 훨씬 깊은 분석을 받을 수 있는지(🔜)로 구성하세요. 짧은 노트에 긴 일반론을 붙이는 것이 최악입니다
+- 사용자의 롤모델, 관심 분야, 경력 정보가 있으면 이를 피드백에 적극 연결하세요
+- 전문 용어를 사용할 때는 괄호 안에 쉬운 설명을 덧붙이세요
+- 요청된 형식(📌💪🎯🎭🎨💡📈🔜)을 반드시 따르되, 각 섹션 사이에 빈 줄을 넣어 가독성을 높이세요
+
+${fewShot}${wantFocus ? FOCUS_INSTRUCTION : ""}${wantScores ? SCORING_INSTRUCTION : ""}`;
+}
+
+const SCORE_KEYS = ["technique", "expression", "creativity", "consistency", "growth"];
+
+// 문자열을 한 줄로 눌러 길이 제한까지 자른다. 문자열이 아니면 빈 문자열(= 무시).
+const clip = (v, max) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+
+// 이번 연습에서 사용자가 고른 초점. 타입이 이상하면 null (400 금지 — 구·신 앱 혼재).
+export function normalizeFocus(v) {
+  return clip(v, 80) || null;
+}
+
+// 직전 연습 정보 { focus, summary(≤400), scores }. 쓸 내용이 하나도 없으면 null.
+export function normalizePrevious(v) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const focus = normalizeFocus(v.focus);
+  const summary = clip(v.summary, 400);
+  let scores = null;
+  if (v.scores && typeof v.scores === "object" && !Array.isArray(v.scores)) {
+    const out = {};
+    for (const k of SCORE_KEYS) {
+      const raw = v.scores[k];
+      // null·빈 문자열은 Number()가 0이 되므로 숫자/숫자문자열만 받는다
+      if (typeof raw !== "number" && !(typeof raw === "string" && raw.trim() !== "")) continue;
+      const n = Number(raw);
+      if (Number.isFinite(n)) out[k] = Math.max(0, Math.min(10, Math.round(n)));
+    }
+    if (Object.keys(out).length > 0) scores = out;
+  }
+  if (!focus && !summary && !scores) return null;
+  return { focus, summary, scores };
+}
+
+// 요청마다 달라지는 부분 — 시스템 블록이 아니라 user 콘텐츠 끝에 붙인다(캐시 프리픽스 보존).
+export function buildContextBlock({ focus, previous, isPremium }) {
+  const parts = [];
+  if (focus) {
+    parts.push(
+      `[이번 연습의 초점]
+사용자가 이번 연습 전에 고른 초점: ${focus}
+→ 🎯 섹션을 이 초점 중심으로 쓰세요. 이 초점이 이번 기록에서 실제로 어떻게 나타났는지부터 짚고, 다음 한 걸음을 제시하세요.`
+    );
+  }
+  if (previous) {
+    const lines = [];
+    if (previous.focus) lines.push(`지난 연습에서 고른 초점: ${previous.focus}`);
+    if (previous.summary) lines.push(`지난 피드백 요약: ${previous.summary}`);
+    if (previous.scores) {
+      lines.push(
+        `지난 활동 지표(내부 수치 — 사용자에게 말하지 말 것): ${SCORE_KEYS.map(
+          (k) => `${k}=${previous.scores[k] ?? "-"}`
+        ).join(" ")}`
+      );
+    }
+    parts.push(
+      `[지난 연습 기록]
+${lines.join("\n")}
+→ 피드백 본문에 🔁 섹션을 하나 추가하세요(🎯 섹션 바로 다음). 지난 초점이 이번 기록에서 어떻게 달라졌는지를, 이번 기록의 구절·구간을 근거로 쓰세요. 좋아졌다고 단정하지 말고 관찰된 변화만 쓰고, 변화가 안 보이면 안 보인다고 쓰세요.
+→ 분량: ${isPremium ? "3~4문장." : "정확히 한 문장. 두 문장을 넘기지 마세요."}`
+    );
+  }
+  return parts.length > 0 ? `\n\n${parts.join("\n\n")}` : "";
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -189,7 +295,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { prompt, field, noteTitle, noteLocalId, wantScores, frames } = req.body;
+    const { prompt, field, noteTitle, noteLocalId, wantScores, wantFocus, frames, focus, previous } = req.body;
 
     if (!prompt) {
       return res.status(400).json({ error: "prompt is required" });
@@ -207,29 +313,7 @@ export default async function handler(req, res) {
       if (saved) console.log(`[ai-analyze] archived ${saved} photo(s)`);
     }
 
-    const fewShot = FEW_SHOT_EXAMPLES[field] || FEW_SHOT_EXAMPLES.general;
-
-    const systemPrompt = `당신은 20년 경력의 예술 전문 마스터 코치입니다. 한국예술종합학교, 국립극단, 주요 영화제에서 활동한 현역 전문가이며, ArtLink 앱에서 아티스트의 연습 노트를 분석하여 전문적이고 실질적인 코칭을 제공합니다.
-
-당신의 코칭 철학:
-- 아티스트의 기록 속에서 본인도 미처 인식하지 못한 패턴과 가능성을 읽어내는 것
-- 학술적 이론과 현장 경험을 결합한 실용적 조언
-- 각 아티스트의 고유한 예술적 정체성을 존중하면서 성장 방향을 제시
-
-절대 규칙:
-- 반드시 사용자의 노트와 동일한 언어로 답변하세요 (한국어 노트는 한국어로, 영어 노트는 영어로, 인도네시아어·일본어 등 다른 언어도 그 언어 그대로). 아래 예시가 한국어라도 이 규칙이 우선입니다
-- 주어진 노트 내용을 기반으로 반드시 즉시 피드백을 제공하세요. 📌 이모지로 시작하세요
-- 절대로 "정보가 부족합니다", "더 알려주세요", "구체적 자료가 필요합니다" 같은 말을 하지 마세요
-- 절대로 사용자에게 추가 정보를 요청하거나 질문하지 마세요
-- 절대로 마크다운 헤딩(#, ##), 볼드(**), 목록(-)을 사용하지 마세요. 이모지 섹션 구분과 일반 텍스트만 사용하세요
-- 노트에 실제로 적힌 내용만 근거로 삼으세요. 노트에 없는 행동·대사·디테일을 지어내서 본 것처럼 쓰지 마세요
-- 노트의 구체적 내용이 3문장 이상이면: 피드백을 1200-1800자로 작성하세요. 2000자를 절대 넘기지 마세요. 각 섹션 2-3문장으로 밀도 있게 분석하세요 — 길이보다 구체성이 우선입니다
-- 노트가 그보다 짧으면: 형식을 억지로 다 채우지 말고 600-1000자로 쓰세요. 적힌 내용에서 읽어낼 수 있는 관찰 2-3가지(📌💪🎯) + 이런 연습에서 전문가들이 흔히 짚는 핵심 포인트 1가지(💡) + 다음 기록에 무엇을 적으면 훨씬 깊은 분석을 받을 수 있는지(🔜)로 구성하세요. 짧은 노트에 긴 일반론을 붙이는 것이 최악입니다
-- 사용자의 롤모델, 관심 분야, 경력 정보가 있으면 이를 피드백에 적극 연결하세요
-- 전문 용어를 사용할 때는 괄호 안에 쉬운 설명을 덧붙이세요
-- 요청된 형식(📌💪🎯🎭🎨💡📈🔜)을 반드시 따르되, 각 섹션 사이에 빈 줄을 넣어 가독성을 높이세요
-
-${fewShot}${wantScores ? SCORING_INSTRUCTION : ""}`;
+    const systemPrompt = buildSystemPrompt(field, wantScores, wantFocus === true);
 
     // 프롬프트 캐싱: 고정 부분(역할+규칙+few-shot)은 cache_control로 캐싱
     // Sonnet 4.6 최소 캐시 프리픽스 2048토큰 — 캐시 동작은 usage 로그로 확인
@@ -256,6 +340,15 @@ ${fewShot}${wantScores ? SCORING_INSTRUCTION : ""}`;
 
     // 첨부 사진(frames) 처리 — 각 원소는 순수 base64 JPEG 문자열(analyze-video.js와 동일 규약).
     // 있으면 비전 블록(이미지들 뒤 텍스트)로 구성, 없으면 기존처럼 텍스트만 → 구버전 앱 호환.
+    // 이번 초점·지난 연습은 요청마다 달라지므로 시스템(캐시 프리픽스)이 아니라 user 텍스트 끝에 붙인다.
+    const promptText =
+      prompt +
+      buildContextBlock({
+        focus: normalizeFocus(focus),
+        previous: normalizePrevious(previous),
+        isPremium,
+      });
+
     const hasFrames = Array.isArray(frames) && frames.length > 0;
     const userContent = hasFrames
       ? [
@@ -263,9 +356,9 @@ ${fewShot}${wantScores ? SCORING_INSTRUCTION : ""}`;
             type: "image",
             source: { type: "base64", media_type: "image/jpeg", data: base64 },
           })),
-          { type: "text", text: prompt },
+          { type: "text", text: promptText },
         ]
-      : prompt;
+      : promptText;
 
     const wantsStream = req.query && (req.query.stream === "1" || req.query.stream === "true");
 

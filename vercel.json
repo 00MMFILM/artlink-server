@@ -25,6 +25,10 @@
     {
       "source": "/app",
       "destination": "/api/app"
+    },
+    {
+      "source": "/practice",
+      "destination": "/api/practice"
     }
   ],
   "headers": [

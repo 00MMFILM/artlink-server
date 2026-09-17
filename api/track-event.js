@@ -25,6 +25,14 @@ const VALID_EVENTS = new Set([
   "ai_feedback_done",
   "signup_nudge_shown",
   "signup_nudge_tapped",
+  // 웹→앱 연결 브릿지(/practice, 2026-09-17): 앱이 이미 보내지만 화이트리스트에
+  // 없어 400으로 버려지던 딥링크 유입 이벤트 + 3단계 신규 이벤트
+  "deeplink_actraw",
+  "deeplink_bium",
+  "deeplink_external",
+  "focus_selected",
+  "repractice_started",
+  "duet_to_note",
 ]);
 
 export default async function handler(req, res) {

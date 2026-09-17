@@ -18,7 +18,9 @@ export const config = { maxDuration: 300 };
 
 // 생성 메타 — 노트에 함께 저장되어 품질 비교·학습 데이터 필터의 기준이 된다
 import { paramChain, textOf, isRefusal } from "./_model.js";
-const PROMPT_VERSION = "2026-08-13.1";
+// 초점·비교 규약은 ai-analyze.js와 한 곳에서 관리한다 (두 엔드포인트가 같은 숨김 줄 계약을 쓴다)
+import { FOCUS_INSTRUCTION, normalizeFocus, normalizePrevious, buildContextBlock } from "./ai-analyze.js";
+const PROMPT_VERSION = "2026-09-17.1";
 
 // ── Gemini 영상 관찰 경로 ──
 // 프레임 요약의 한계(움직임·소리 증발)를 보완: 영상을 통째로 Gemini가 시청·청취하고
@@ -167,6 +169,33 @@ const VIDEO_FEW_SHOT = {
 🎯 대화체 부분에서 캐릭터별 목소리 차이를 더 뚜렷하게 하면 몰입감이 높아져요. 각 캐릭터의 '음성 시그니처'를 확립하세요 — A는 저음+느린 리듬+gentle 톤, B는 고음+빠른 리듬+firm 톤. 대사만 들어도 누가 말하는지 구분되는 수준을 목표로 하세요.`,
 };
 
+// ── 요청별로 달라지지 않는 시스템 프롬프트 (프롬프트 캐시 프리픽스) ──
+// focus·previous 같은 가변 내용은 여기 넣지 말 것 — user 콘텐츠로 보낸다.
+export function buildVideoSystemPrompt(field, wantFocus = false) {
+  const fewShot = VIDEO_FEW_SHOT[field] || VIDEO_FEW_SHOT.acting;
+
+  return `당신은 20년 경력의 영상/퍼포먼스 분석 마스터 코치입니다. 사용자가 촬영한 연습/공연 영상의 프레임과 음성 전사를 분석하여 전문적이고 실질적인 피드백을 제공합니다.
+
+절대 규칙:
+- 반드시 사용자의 요청과 동일한 언어로 답변하세요 (한국어 요청은 한국어로, 영어 요청은 영어로, 다른 언어도 그 언어 그대로). 📌 이모지로 시작하세요
+- 주어진 영상 프레임과 내용을 기반으로 반드시 즉시 피드백을 제공하세요
+- 절대로 "정보가 부족합니다", "더 알려주세요" 같은 말을 하지 마세요
+- 절대로 사용자에게 추가 정보를 요청하거나 질문하지 마세요
+- 절대로 마크다운 헤딩(#, ##), 볼드(**), 목록(-)을 사용하지 마세요. 이모지 섹션 구분과 일반 텍스트만 사용하세요
+- 영상 프레임에서 시각적 요소(자세, 표정, 동작, 공간 활용, 조명 등)를 구체적으로 분석하세요
+- 프레임에서 실제로 관찰되는 것만 근거로 삼으세요. 보이지 않는 동작·표정·디테일을 지어내서 본 것처럼 쓰지 마세요. 프레임은 순간 포착이므로 프레임 사이 변화는 "~로 보입니다" 수준으로 신중하게 추론하세요
+- 음성 전사가 있으면 대사 전달력, 음성 톤, 리듬 등도 분석에 포함하세요
+- 음성 전사가 없으면 영상 프레임의 시각적 요소만으로 분석하세요. 전사가 없다는 사실을 절대 언급하지 마세요. 🎤 섹션은 영상에서 관찰되는 음성/사운드 관련 시각적 단서(입 모양, 호흡, 발성 자세 등)를 기반으로 작성하세요
+- 시간 순서에 따른 흐름 변화를 관찰하세요. 프레임 라벨에 시각(예: 1:24 시점)이 있으면 이를 활용해 구간별 변화("0:30에서 안정적이던 자세가 1:10에는…")를 구체적으로 짚으세요
+- 관찰의 근거가 되는 구간을 밝히세요. 영상 관찰 기록이나 전사가 있으면 그 대사 한 토막이나 시각("1:10 지점")을 짧게 인용하고, 프레임만 있으면 몇 번째 프레임에서 본 것인지 밝히세요
+- 실력 수준을 단정하거나 등급을 매기지 마세요. 합격·불합격 가능성, 캐스팅 가능성, 오디션·입시 결과 예측은 어떤 표현으로도 언급하지 마세요. 관찰된 것과 다음에 해볼 것만 쓰세요
+- 내부 점수는 연습 활동을 기록하기 위한 지표일 뿐 실력 평가가 아닙니다. 점수·등급·수치를 사용자에게 말하지 마세요
+- 피드백은 1200-1800자로 작성하세요. 2000자를 절대 넘기지 마세요. 각 섹션 2-3문장으로 밀도 있게 분석하세요 — 길이보다 구체성이 우선입니다
+- 요청된 형식(📌💪🎯🎭🎤📈🔜)을 반드시 따르되, 각 섹션 사이에 빈 줄을 넣으세요
+
+${fewShot}${wantFocus ? FOCUS_INSTRUCTION : ""}`;
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -212,7 +241,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { prompt, field, noteTitle, noteLocalId, frames, frameTimes, videoUrl, transcript } = req.body;
+    const { prompt, field, noteTitle, noteLocalId, frames, frameTimes, videoUrl, transcript, focus, previous, wantFocus } =
+      req.body;
 
     if (!prompt || !frames || frames.length === 0) {
       return res.status(400).json({ error: "prompt and frames are required" });
@@ -250,25 +280,7 @@ export default async function handler(req, res) {
       }
     }
 
-    const fewShot = VIDEO_FEW_SHOT[field] || VIDEO_FEW_SHOT.acting;
-
-    const systemPrompt = `당신은 20년 경력의 영상/퍼포먼스 분석 마스터 코치입니다. 사용자가 촬영한 연습/공연 영상의 프레임과 음성 전사를 분석하여 전문적이고 실질적인 피드백을 제공합니다.
-
-절대 규칙:
-- 반드시 사용자의 요청과 동일한 언어로 답변하세요 (한국어 요청은 한국어로, 영어 요청은 영어로, 다른 언어도 그 언어 그대로). 📌 이모지로 시작하세요
-- 주어진 영상 프레임과 내용을 기반으로 반드시 즉시 피드백을 제공하세요
-- 절대로 "정보가 부족합니다", "더 알려주세요" 같은 말을 하지 마세요
-- 절대로 사용자에게 추가 정보를 요청하거나 질문하지 마세요
-- 절대로 마크다운 헤딩(#, ##), 볼드(**), 목록(-)을 사용하지 마세요. 이모지 섹션 구분과 일반 텍스트만 사용하세요
-- 영상 프레임에서 시각적 요소(자세, 표정, 동작, 공간 활용, 조명 등)를 구체적으로 분석하세요
-- 프레임에서 실제로 관찰되는 것만 근거로 삼으세요. 보이지 않는 동작·표정·디테일을 지어내서 본 것처럼 쓰지 마세요. 프레임은 순간 포착이므로 프레임 사이 변화는 "~로 보입니다" 수준으로 신중하게 추론하세요
-- 음성 전사가 있으면 대사 전달력, 음성 톤, 리듬 등도 분석에 포함하세요
-- 음성 전사가 없으면 영상 프레임의 시각적 요소만으로 분석하세요. 전사가 없다는 사실을 절대 언급하지 마세요. 🎤 섹션은 영상에서 관찰되는 음성/사운드 관련 시각적 단서(입 모양, 호흡, 발성 자세 등)를 기반으로 작성하세요
-- 시간 순서에 따른 흐름 변화를 관찰하세요. 프레임 라벨에 시각(예: 1:24 시점)이 있으면 이를 활용해 구간별 변화("0:30에서 안정적이던 자세가 1:10에는…")를 구체적으로 짚으세요
-- 피드백은 1200-1800자로 작성하세요. 2000자를 절대 넘기지 마세요. 각 섹션 2-3문장으로 밀도 있게 분석하세요 — 길이보다 구체성이 우선입니다
-- 요청된 형식(📌💪🎯🎭🎤📈🔜)을 반드시 따르되, 각 섹션 사이에 빈 줄을 넣으세요
-
-${fewShot}`;
+    const systemPrompt = buildVideoSystemPrompt(field, wantFocus === true);
 
     // Build content array: interleave frame images with labels, then add text prompt
     const content = [];
@@ -312,6 +324,12 @@ ${fewShot}`;
     if (transcript) {
       userText += `\n\n[음성 전사]\n${transcript}`;
     }
+    // 이번 초점·지난 연습은 요청마다 달라지므로 시스템(캐시 프리픽스)이 아니라 user 텍스트 끝에 붙인다.
+    userText += buildContextBlock({
+      focus: normalizeFocus(focus),
+      previous: normalizePrevious(previous),
+      isPremium,
+    });
 
     // 비한국어 요청 감지 → 응답 언어 강제 (한국어 few-shot 지배 방지)
     const hangulCount = (prompt.match(/[가-힣]/g) || []).length;
