@@ -75,7 +75,7 @@ check(
 check("(b) count가 userIds 길이와 일치", res.body?.count === 2, JSON.stringify(res.body));
 check("(b) 쿼리에 active=eq.true 필터 포함(inactive 제외 근거)", (lastUrl || "").includes("active=eq.true"), lastUrl);
 check("(b) generatedAt이 ISO 문자열", typeof res.body?.generatedAt === "string" && !isNaN(Date.parse(res.body.generatedAt)), JSON.stringify(res.body));
-check("(b) Cache-Control 5분 캐시 헤더", res.headers["Cache-Control"] === "public, max-age=300", JSON.stringify(res.headers));
+check("(b) Cache-Control 5분 캐시 헤더", res.headers["Cache-Control"] === "private, max-age=300", JSON.stringify(res.headers));
 
 // (c) DB 오류 → 500 (조용한 200 금지)
 nextDbStatus = 500;

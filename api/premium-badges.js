@@ -35,7 +35,7 @@ export default async function handler(req, res) {
     if (error) throw error;
 
     const userIds = (data || []).map((r) => r.user_id);
-    res.setHeader("Cache-Control", "public, max-age=300");
+    res.setHeader("Cache-Control", "private, max-age=300");
     return res.status(200).json({
       userIds,
       count: userIds.length,
