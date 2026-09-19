@@ -396,7 +396,7 @@ export default async function handler(req, res) {
               continue;
             }
             if (finalMsg.stop_reason === "max_tokens") {
-              res.write("\n\n---\n(분석이 길어져 일부 생략되었습니다)");
+              res.write("\n\n…"); // 본문에 쓴 글은 그대로 노트에 저장된다 — 언어 중립 표시만
             }
             break;
           } catch (modelErr) {
@@ -409,8 +409,8 @@ export default async function handler(req, res) {
         else if (guestId) await consumeGuest(guestId);
       } catch (streamErr) {
         console.error("[ai-analyze] stream error:", streamErr.message);
-        // 스트림 도중 실패 — 지금까지 받은 것만이라도 전달하고 종료
-        if (full.trim().length < 10) res.write("\n\n(AI 분석 중 오류가 발생했습니다)");
+        // 스트림 도중 실패 — 오류 문구를 본문에 쓰지 않는다. 쓰면 앱이 그것을 AI 피드백으로 저장한다.
+        // 아무것도 안 쓰고 끝내면 앱이 10자 미만 → 실패로 처리하고 이전 값을 복원한다.
       }
       return res.end();
     }

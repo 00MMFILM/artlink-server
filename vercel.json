@@ -2,7 +2,7 @@
   "version": 2,
   "functions": {
     "api/analyze-video.js": {
-      "maxDuration": 120
+      "maxDuration": 300
     },
     "api/ai-analyze.js": {
       "maxDuration": 120
