@@ -11,6 +11,7 @@ process.env.SUPABASE_SERVICE_KEY = "test-key";
 process.env.APP_SECRET = "test-secret";
 
 let upsertCalls = 0;
+let lastBody = null;
 let nextUpsertRows = []; // 다음 upsert 응답으로 돌려줄 "실제 삽입된" 행들
 
 globalThis.fetch = async (url, init = {}) => {
@@ -18,6 +19,7 @@ globalThis.fetch = async (url, init = {}) => {
   const method = (init.method || "GET").toUpperCase();
   if (u.pathname.includes("/practice_events") && method === "POST") {
     upsertCalls++;
+    lastBody = JSON.parse(init.body || "[]");
     return new Response(JSON.stringify(nextUpsertRows), {
       status: 201,
       headers: { "Content-Type": "application/json" },
@@ -144,6 +146,22 @@ function req(events) {
   await handler({ method: "POST", headers: {}, body: { events } }, res);
   check("(f) X-App-Token 없음 → 401", res.code === 401, `code=${res.code} body=${JSON.stringify(res.body)}`);
   check("(f) DB 호출 없음", upsertCalls === 0, `calls=${upsertCalls}`);
+}
+
+// (g) 기기 시계가 미래로 틀어진 이벤트는 받은 시각으로 바로잡고, 과거 이벤트는 그대로 둔다
+{
+  upsertCalls = 0;
+  const future = new Date(Date.now() + 20 * 24 * 3600 * 1000).toISOString();
+  const past = new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString();
+  const events = [validEvent({ clientEventId: uuidN(8), occurredAt: future }), validEvent({ clientEventId: uuidN(9), occurredAt: past })];
+  nextUpsertRows = events.map((e) => ({ client_event_id: e.clientEventId }));
+  const res = mockRes();
+  await handler(req(events), res);
+  const rows = Array.isArray(lastBody) ? lastBody : [];
+  const f = rows.find((r) => r.client_event_id === uuidN(8));
+  const p = rows.find((r) => r.client_event_id === uuidN(9));
+  check("(g) 미래 시각은 지금 이하로 보정", f && Date.parse(f.occurred_at) <= Date.now() + 1000, JSON.stringify(f));
+  check("(g) 과거 시각은 그대로", p && p.occurred_at === past, JSON.stringify(p));
 }
 
 console.log(failed === 0 ? "\nALL PASS" : `\n${failed} FAILED`);

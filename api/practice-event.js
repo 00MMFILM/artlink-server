@@ -117,6 +117,10 @@ export default async function handler(req, res) {
   // Authorization이 있으면 식별 시도 — 실패해도(만료 등) 게스트로 계속 진행한다.
   const user = await identifyUser(req);
 
+  // 기기 시계가 미래로 틀어진 경우(9/19 판정 때 10월 날짜가 섞였다) 받은 시각으로 바로잡는다.
+  // 과거로 늦게 도착한 이벤트(오프라인 큐)는 정상이므로 그대로 둔다.
+  const now = Date.now();
+  const clampTime = (iso) => (Date.parse(iso) > now + 10 * 60 * 1000 ? new Date(now).toISOString() : iso);
   const rows = events.map((ev) => ({
     device_id: ev.deviceId,
     auth_user_id: user ? user.id : null,
@@ -126,7 +130,7 @@ export default async function handler(req, res) {
     client_event_id: ev.clientEventId,
     subject_key: ev.subjectKey ?? null,
     field: ev.field ?? null,
-    occurred_at: ev.occurredAt,
+    occurred_at: clampTime(ev.occurredAt),
     app_version: ev.appVersion,
     platform: ev.platform,
     language: ev.language ?? null,
