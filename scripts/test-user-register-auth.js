@@ -13,6 +13,8 @@ const USERS = [
 ];
 let bearerUser = null; // getUser가 돌려줄 유저 (null이면 401)
 let calls = [];
+let inserted = null;
+let claimRace = false;
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -31,11 +33,12 @@ globalThis.fetch = async (url, init = {}) => {
     return json({ id: bearerUser, aud: "authenticated" });
   }
   if (u.includes("/rest/v1/users")) {
-    if (method === "POST") return json({ id: "u-new" }); // insert().select().single()
+    if (method === "POST") { inserted = JSON.parse(init.body); return json({ id: "u-new" }); }
+    if (method === "PATCH") return json(claimRace ? null : { id: "u-attacker" });
     const m = u.match(/auth_user_id=eq\.([^&]+)/);
     const d = u.match(/device_id=eq\.([^&]+)/);
     if (m) return json(USERS.filter((r) => r.auth_user_id === decodeURIComponent(m[1])).map((r) => ({ id: r.id })));
-    if (d) return json(USERS.filter((r) => r.device_id === decodeURIComponent(d[1])).map((r) => ({ id: r.id })));
+    if (d) return json(USERS.filter((r) => r.device_id === decodeURIComponent(d[1])).map((r) => ({ id: r.id, auth_user_id: r.auth_user_id })));
     return json([]);
   }
   return json([]);
@@ -56,6 +59,7 @@ function mockRes() {
 async function call({ token, body }) {
   bearerUser = token || null;
   calls = [];
+  inserted = null;
   const res = mockRes();
   const headers = {};
   if (token) headers.authorization = `Bearer fake.${token}`;
@@ -92,6 +96,23 @@ check("(d) 신규 익명 등록은 종전대로 200", res.code === 200 && res.bo
 // (e) 토큰 없는 로그인 유저(콜드스타트 등): authUserId 무시하고 device 경로
 res = await call({ body: { deviceId: "dev-new", authUserId: "auth-victim" } });
 check("(e) 토큰 없으면 auth 연결 없이 device 등록", res.code === 200 && res.body.userId === "u-new", JSON.stringify(res.body));
+
+res = await call({ body: { deviceId: "dev-victim" } });
+check("(f) 로그인 소유 기기로 익명 토큰 발급 금지", res.code === 401 && res.body.error === "auth_required" && !res.body.profileToken);
+
+res = await call({ token: "auth-new", body: { deviceId: "dev-victim", authUserId: "auth-new" } });
+check("(g) 다른 계정은 계정별 새 행", res.code === 200 && res.body.userId === "u-new" && inserted?.auth_user_id === "auth-new" && inserted?.device_id === "account_auth-new");
+check("(g) A 연결/프로필 변경 없음", !calls.some((c) => c.startsWith("PATCH ") || c.startsWith("DELETE ")));
+
+res = await call({ token: "auth-victim", body: { deviceId: "dev-attacker", authUserId: "auth-victim" } });
+check("(h) 기존 계정 재연결 때 다른 기기 프로필 보존", res.body.userId === "u-victim" && !calls.some((c) => c.startsWith("DELETE ")));
+
+res = await call({ token: "auth-new", body: { deviceId: "dev-attacker", authUserId: "auth-new" } });
+check("(i) 미연결 게스트 행만 조건부 본인 연결", res.code === 200 && res.body.userId === "u-attacker" && calls.some((c) => c.startsWith("PATCH ") && c.includes("auth_user_id=is.null")));
+
+claimRace = true;
+res = await call({ token: "auth-new", body: { deviceId: "dev-attacker", authUserId: "auth-new" } });
+check("(j) 동시에 다른 계정이 가져간 기기에는 토큰 발급 금지", res.code === 409 && !res.body.profileToken);
 
 console.log(failed === 0 ? "\nALL PASS" : `\n${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);

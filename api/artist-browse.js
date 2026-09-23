@@ -17,6 +17,8 @@ export default async function handler(req, res) {
       .limit(50);
 
     if (f.gender) query = query.eq("gender", f.gender);
+    // 비공개 값을 범위 검색에 사용해도 노출 여부로 값을 추정할 수 있다.
+    if (f.heightMin || f.heightMax) query = query.eq("height_private", false);
     if (f.heightMin) query = query.gte("height", Number(f.heightMin));
     if (f.heightMax) query = query.lte("height", Number(f.heightMax));
     if (f.field) query = query.contains("fields", [f.field]);

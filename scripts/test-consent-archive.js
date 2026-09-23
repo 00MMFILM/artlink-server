@@ -5,9 +5,8 @@
 // 실 미디어+네트워크를 요구해 오프라인 구동 불가 — 단 transcribe는 여기서 검증되는 동일한 공유
 // 헬퍼 hasDataConsent/copyTempToArchive/upsertMediaAsset를 그대로 쓰므로 보관 로직은 커버된다.)
 //
-// 참고: 보관은 AI 생성 호출 이전에 동의 게이트로 실행된다. Anthropic SDK는 자체 fetch를 써서
-// 전역 mock을 우회하므로(실 네트워크 필요) 최종 AI 응답 코드는 검증 범위 밖 — 콘솔을 조용히 하고
-// 검증 대상인 "보관 부작용(copy/upsert/photo)"만 단언한다. 보관은 AI 성공 여부와 독립이다.
+// 보관은 AI 생성 호출 이전에 동의 게이트로 실행된다. Anthropic SDK의 create도 별도로
+// 대체하여 자체 fetch가 전역 mock을 우회하는 버전에서도 외부 요청을 하지 않는다.
 //
 // (a) X-Data-Consent 없음 → 원본 복사(copy) 미호출 + media_assets 미적재
 // (b) X-Data-Consent == '1' → copy 호출 + media_assets(kind=video) upsert
@@ -19,7 +18,15 @@ process.env.SUPABASE_URL = "http://127.0.0.1:9/mock";
 process.env.SUPABASE_SERVICE_KEY = "test-service-key";
 process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
 process.env.APP_SECRET = "";
+process.env.ARCHIVE_COLLECTION_ENABLED = "true"; // 과거 보관 경로의 회귀 검사에만 명시 활성화
 delete process.env.GEMINI_API_KEY; // gemini 경로 스킵 → 프레임 경로
+
+const Anthropic = (await import("@anthropic-ai/sdk")).default;
+Anthropic.Messages.prototype.create = async (params) => ({
+  model: params.model,
+  content: [{ type: "text", text: "📌 합성 테스트 분석 결과입니다. 실제 사용자 기록은 사용하지 않습니다." }],
+  stop_reason: "end_turn", usage: {},
+});
 
 const SUPA = process.env.SUPABASE_URL;
 const VIDEO_URL = `${SUPA}/storage/v1/object/public/temp-media/u-1/rec123.mp4`;
@@ -99,7 +106,7 @@ async function run(handler, { consent, body }) {
   const headers = { authorization: "Bearer faketoken" };
   if (consent) headers["x-data-consent"] = "1";
   const res = mockRes();
-  // AI 생성 실패(네트워크 없음) 로그 소음 억제 — 보관은 그 전에 이미 실행됨
+  // 합성 AI 응답 로그 소음 억제 — 보관은 그 전에 이미 실행됨
   const origLog = console.log, origErr = console.error;
   console.log = () => {}; console.error = () => {};
   try {
@@ -167,6 +174,12 @@ res = await run(aiAnalyze, {
 });
 check("(f) 미동의 사진 업로드 0건", state.photoUploads.length === 0, `uploads=${state.photoUploads.length}`);
 check("(f) 미동의 photo 행 0건", state.assetUpserts.filter((a) => a.kind === "photo").length === 0);
+
+delete process.env.ARCHIVE_COLLECTION_ENABLED;
+await run(analyzeVideo, { consent: true, body: baseVideoBody });
+check("(g) 기본 수집 중단: 구버전 동의 헤더가 있어도 영상 보관 없음", state.copyCalls.length === 0 && state.assetUpserts.length === 0);
+await run(aiAnalyze, { consent: true, body: { prompt: "합성 사진", frames: [IMG] } });
+check("(g) 기본 수집 중단: 동의 사진도 보관 없음", state.photoUploads.length === 0 && state.assetUpserts.length === 0);
 
 console.log(failed === 0 ? "\nALL PASS" : `\n${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);

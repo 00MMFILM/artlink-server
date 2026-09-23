@@ -4,6 +4,8 @@
 import { checkAppToken, rejectAppToken, identifyUser } from "./_usage.js";
 import { withdrawUserArchive } from "./_archive.js";
 
+const SCOPE = { scope: "authenticated_media_archive", excludes: ["training_data", "guest_media_archive"] };
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -15,13 +17,13 @@ export default async function handler(req, res) {
   if (!checkAppToken(req)) return rejectAppToken(res);
 
   const user = await identifyUser(req);
-  if (!user) return res.status(401).json({ error: "unauthorized" });
+  if (!user) return res.status(401).json({ ok: false, complete: false, error: "authenticated_archive_only", ...SCOPE });
 
   try {
     const { deleted } = await withdrawUserArchive(user.id);
-    return res.status(200).json({ ok: true, deleted });
+    return res.status(200).json({ ok: true, complete: true, deleted, ...SCOPE });
   } catch (e) {
     console.error("[media-consent-withdraw]", e.message);
-    return res.status(500).json({ error: "withdraw failed" });
+    return res.status(500).json({ ok: false, complete: false, error: "withdraw_failed", retryable: true, ...SCOPE });
   }
 }

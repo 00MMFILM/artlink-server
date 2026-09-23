@@ -363,17 +363,19 @@ export default async function handler(req, res) {
     const wantsStream = req.query && (req.query.stream === "1" || req.query.stream === "true");
 
     // ── 스트리밍 경로 (앱이 ?stream=1 로 요청) ──
-    // 청크 텍스트를 그대로 흘려보냄. 앱은 XHR onprogress로 누적 수신.
-    // 모델/프롬프트/길이 동일 → 품질 손실 없음, 체감 대기만 감소.
+    // 구버전은 청크 텍스트, protocol=events는 완료/실패를 구분하는 NDJSON.
     if (wantsStream) {
-      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      const events = req.query.protocol === "events";
+      const writeEvent = (event) => res.write(JSON.stringify(event) + "\n");
+      res.setHeader("Content-Type", events ? "application/x-ndjson; charset=utf-8" : "text/plain; charset=utf-8");
       res.setHeader("Cache-Control", "no-cache, no-transform");
       res.setHeader("X-Accel-Buffering", "no");
       // 생성 메타 — 앱이 노트 저장 시 함께 기록 (스트림은 본문이 텍스트라 헤더로 전달)
       const chain = paramChain(isPremium);
-      res.setHeader("X-AL-Model", chain[0].model);
       res.setHeader("X-AL-Prompt-Version", PROMPT_VERSION);
       let full = "";
+      let usedModel = null;
+      let completed = false;
       try {
         // 프리미엄(Opus 5) 실패·거절 시 무료 모델(Sonnet 5)로 1회 재시도 — 본문이 아직 안 나간 경우에만
         for (const params of chain) {
@@ -385,32 +387,44 @@ export default async function handler(req, res) {
             });
             for await (const event of stream) {
               if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
-                res.write(event.delta.text);
+                // 첫 본문을 내보내기 전까지 폴백 모델의 실제 이름으로 헤더를 갱신한다.
+                if (!res.headersSent) res.setHeader("X-AL-Model", params.model);
+                if (events) writeEvent({ type: "delta", text: event.delta.text });
+                else res.write(event.delta.text);
                 full += event.delta.text;
               }
             }
             const finalMsg = await stream.finalMessage();
             console.log("[ai-analyze] stream usage:", params.model, JSON.stringify(finalMsg.usage));
-            if (isRefusal(finalMsg) && !full.trim()) {
+            if (isRefusal(finalMsg) && !full.length) {
               console.error("[ai-analyze] refusal:", params.model, JSON.stringify(finalMsg.stop_details || {}));
               continue;
             }
+            if (events && isRefusal(finalMsg)) throw new Error("analysis_refused");
             if (finalMsg.stop_reason === "max_tokens") {
+              if (events) throw new Error("analysis_truncated");
               res.write("\n\n…"); // 본문에 쓴 글은 그대로 노트에 저장된다 — 언어 중립 표시만
             }
+            if (events && !["end_turn", "stop_sequence"].includes(finalMsg.stop_reason)) throw new Error("analysis_not_finished");
+            usedModel = finalMsg.model || params.model;
+            completed = true;
             break;
           } catch (modelErr) {
             console.error("[ai-analyze] stream model error:", params.model, modelErr.status, modelErr.message);
-            if (full.trim()) throw modelErr; // 이미 본문이 나갔으면 재시도하지 않는다
+            if (full.length) throw modelErr; // 공백이라도 이미 나갔으면 메타/본문을 다른 모델과 섞지 않는다
           }
         }
-        if (full.trim().length < 10) throw new Error("empty analysis");
-        if (user) await consumeText(user.id); // 성공 시에만 카운트 (await로 서버리스 freeze 전 저장 보장)
-        else if (guestId) await consumeGuest(guestId);
+        if (!completed || full.trim().length < 10) throw new Error("empty analysis");
+        if (user) await consumeText(user.id, { strict: events });
+        else if (guestId) await consumeGuest(guestId, { strict: events });
+        else if (events) throw new Error("usage_identity_missing");
+        // 신버전은 공급자의 완료와 사용량 기록까지 확인된 뒤에만 최종 결과를 저장한다.
+        if (events) writeEvent({ type: "done", model: usedModel, promptVersion: PROMPT_VERSION });
       } catch (streamErr) {
         console.error("[ai-analyze] stream error:", streamErr.message);
-        // 스트림 도중 실패 — 오류 문구를 본문에 쓰지 않는다. 쓰면 앱이 그것을 AI 피드백으로 저장한다.
-        // 아무것도 안 쓰고 끝내면 앱이 10자 미만 → 실패로 처리하고 이전 값을 복원한다.
+        if (events) writeEvent({ type: "error", error: "analysis_incomplete" });
+        // 구버전 plain 스트림에는 오류 문구를 본문으로 섞지 않는다.
+        // 신버전은 error 또는 done 없는 종료를 실패로 처리하고 이전 결과를 보존한다.
       }
       return res.end();
     }

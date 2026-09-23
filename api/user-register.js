@@ -39,25 +39,36 @@ export default async function handler(req, res) {
   try {
     // 1) auth 계정으로 기존 유저 찾기 (교차기기 재연결) — 검증된 토큰이 있을 때만
     if (authId) {
-      const { data: byAuth } = await supabase
+      const { data: byAuth, error: authError } = await supabase
         .from("users").select("id").eq("auth_user_id", authId).maybeSingle();
+      if (authError) throw authError;
       if (byAuth) {
-        // 구 device 계정의 중복 프로필 정리
-        const { data: oldDevice } = await supabase
-          .from("users").select("id").eq("device_id", deviceId).maybeSingle();
-        if (oldDevice && oldDevice.id !== byAuth.id) {
-          await supabase.from("artist_profiles").delete().eq("user_id", oldDevice.id);
-        }
+        // 같은 기기를 썼다는 이유로 다른 계정/게스트의 프로필을 삭제하지 않는다.
         return res.status(200).json({ userId: byAuth.id, profileToken: makeProfileToken(byAuth.id) });
       }
     }
 
     // 2) device로 기존 유저 찾기
-    const { data: existing } = await supabase
-      .from("users").select("id").eq("device_id", deviceId).maybeSingle();
+    const { data: existing, error: deviceError } = await supabase
+      .from("users").select("id, auth_user_id").eq("device_id", deviceId).maybeSingle();
+    if (deviceError) throw deviceError;
     if (existing) {
-      if (authId) {
-        await supabase.from("users").update({ auth_user_id: authId }).eq("id", existing.id);
+      if (existing.auth_user_id && !authId) {
+        return res.status(401).json({ error: "auth_required" });
+      }
+      if (existing.auth_user_id && existing.auth_user_id !== authId) {
+        // 다른 로그인 계정이 사용했던 기기다. 기존 소유자는 보존하고 계정 전용 행을 만든다.
+        const { data: created, error } = await supabase.from("users")
+          .insert({ device_id: `account_${authId}`, display_name: displayName || "익명", field: field || null, auth_user_id: authId })
+          .select("id").single();
+        if (error) throw error;
+        return res.status(200).json({ userId: created.id, profileToken: makeProfileToken(created.id) });
+      }
+      if (authId && !existing.auth_user_id) {
+        const { data: claimed, error } = await supabase.from("users").update({ auth_user_id: authId })
+          .eq("id", existing.id).is("auth_user_id", null).select("id").maybeSingle();
+        if (error) throw error;
+        if (!claimed) return res.status(409).json({ error: "registration_changed", retryable: true });
       }
       return res.status(200).json({ userId: existing.id, profileToken: makeProfileToken(existing.id) });
     }

@@ -127,17 +127,21 @@ export async function checkTextQuota(userId) {
   }
 }
 
-export async function consumeText(userId) {
-  if (!supabase) return;
+export async function consumeText(userId, { strict = false } = {}) {
+  if (!supabase) {
+    if (strict) throw new Error("usage_storage_unavailable");
+    return;
+  }
   try {
     const day = kstDay();
-    const { data } = await supabase
+    const { data, error: readError } = await supabase
       .from("ai_usage_daily")
       .select("text_count")
       .eq("user_id", userId)
       .eq("day", day)
       .maybeSingle();
-    await supabase.from("ai_usage_daily").upsert(
+    if (readError) throw readError;
+    const { error } = await supabase.from("ai_usage_daily").upsert(
       {
         user_id: userId,
         day,
@@ -146,8 +150,10 @@ export async function consumeText(userId) {
       },
       { onConflict: "user_id,day" }
     );
+    if (error) throw error;
   } catch (e) {
     console.error("[usage] consumeText:", e.message);
+    if (strict) throw e;
   }
 }
 
@@ -258,22 +264,27 @@ export async function checkGuestQuota(deviceId) {
   }
 }
 
-export async function consumeGuest(deviceId) {
-  if (!supabase) return;
+export async function consumeGuest(deviceId, { strict = false } = {}) {
+  if (!supabase) {
+    if (strict) throw new Error("usage_storage_unavailable");
+    return;
+  }
   try {
-    const { data } = await supabase
+    const { data, error: readError } = await supabase
       .from("guest_ai_usage")
       .select("count")
       .eq("device_id", deviceId)
       .maybeSingle();
+    if (readError) throw readError;
     const { error } = await supabase.from("guest_ai_usage").upsert(
       { device_id: deviceId, count: (data?.count || 0) + 1, updated_at: new Date().toISOString() },
       { onConflict: "device_id" }
     );
     // upsert 실패를 조용히 넘기면 게스트 카운트가 0에 머물러 무제한 체험이 됨 → 반드시 로깅
-    if (error) console.error("[usage] consumeGuest upsert failed:", deviceId, error.message);
+    if (error) throw error;
   } catch (e) {
     console.error("[usage] consumeGuest:", e.message);
+    if (strict) throw e;
   }
 }
 

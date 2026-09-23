@@ -50,5 +50,7 @@ export function stripSensitive(row) {
   if (!row) return row;
   const out = { ...row };
   for (const c of SENSITIVE_COLS) delete out[c];
+  if (out.height_private) out.height = null;
+  if (out.weight_private) out.weight = null;
   return out;
 }

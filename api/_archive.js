@@ -1,5 +1,5 @@
 // 동의 기반 학습자산 보관 공통 모듈 (2026-08-27)
-// - 동의 신호: 요청 헤더 X-Data-Consent: 1 (없거나 "1"이 아니면 미동의 → 보관 안 함)
+// - 수집 기본 중단. 명시적 활성화 + 요청 헤더 X-Data-Consent: 1일 때만 보관
 // - 동의 시에만 앱이 올린 원본(음성/영상/사진)을 private 버킷 media-archive로 복사·업로드
 //   + media_assets 테이블에 메타 행 적재 (storage_path 기준 upsert)
 // - 철회 시: 유저 프리픽스 객체 + media_assets 행 삭제
@@ -14,9 +14,11 @@ export const PHOTO_MAX_PER_NOTE = 8; // 노트당 첨부 사진 보관 상한 (�
 const base = () => process.env.SUPABASE_URL;
 const key = () => process.env.SUPABASE_SERVICE_KEY;
 
-// 요청 헤더로 동의 여부 판정. 공유 계약: "1"이면 동의.
+// 전역 수집 허용과 요청의 동의 신호를 함께 판정한다.
 export function hasDataConsent(req) {
-  return req.headers["x-data-consent"] === "1";
+  // 소유자·서버 동의 철회 계약을 갖추기 전 신규 원본 수집은 기본 중단한다.
+  // 기존 원본의 철회 경로는 이 플래그와 무관하게 계속 동작한다.
+  return process.env.ARCHIVE_COLLECTION_ENABLED === "true" && req.headers["x-data-consent"] === "1";
 }
 
 // 노트 제목 → 짧은 해시 (원문 저장 없이 동일 노트 묶기용). 없으면 null.
@@ -147,26 +149,22 @@ async function listAllKeys(prefix) {
   const b = base();
   const keys = [];
   async function walk(pfx) {
-    let items = [];
-    try {
+    const pageSize = 1000;
+    for (let offset = 0; ; offset += pageSize) {
       const r = await fetch(`${b}/storage/v1/object/list/${ARCHIVE_BUCKET}`, {
         method: "POST",
         headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ prefix: pfx, limit: 1000 }),
+        body: JSON.stringify({ prefix: pfx, limit: pageSize, offset, sortBy: { column: "name", order: "asc" } }),
       });
-      if (!r.ok) {
-        console.error("[archive] list failed:", r.status, await r.text());
-        return;
+      if (!r.ok) throw new Error(`archive_list_failed:${r.status}`);
+      const items = await r.json();
+      if (!Array.isArray(items)) throw new Error("archive_list_invalid");
+      for (const it of items) {
+        const full = pfx + it.name;
+        if (it.id) keys.push(full); // 파일
+        else await walk(full + "/"); // 폴더 → 재귀
       }
-      items = await r.json();
-    } catch (e) {
-      console.error("[archive] list error:", e.message);
-      return;
-    }
-    for (const it of items || []) {
-      const full = pfx + it.name;
-      if (it.id) keys.push(full); // 파일
-      else await walk(full + "/"); // 폴더 → 재귀
+      if (items.length < pageSize) break;
     }
   }
   await walk(prefix.endsWith("/") ? prefix : prefix + "/");
@@ -174,38 +172,34 @@ async function listAllKeys(prefix) {
 }
 
 // 동의 철회 — 해당 유저의 media-archive 객체 + media_assets 행 삭제.
-// 부분 실패는 로깅하고, 실제 삭제된 객체 수(deleted)를 반환.
+// 실패하면 완료를 반환하지 않는다. 원본 삭제가 확인된 뒤에만 메타 행을 지운다.
 export async function withdrawUserArchive(userId) {
   const b = base();
   let deleted = 0;
-  if (!b || !key() || !userId) return { deleted };
+  if (!b || !key() || !userId || userId === "anon") throw new Error("archive_owner_or_config_missing");
 
   // 1) storage 객체 일괄 삭제
   const keys = await listAllKeys(`${userId}/`);
-  if (keys.length) {
-    try {
-      const r = await fetch(`${b}/storage/v1/object/${ARCHIVE_BUCKET}`, {
-        method: "DELETE",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ prefixes: keys }),
-      });
-      if (r.ok) deleted += keys.length;
-      else console.error("[archive] withdraw storage delete failed:", r.status, await r.text());
-    } catch (e) {
-      console.error("[archive] withdraw storage error:", e.message);
-    }
+  for (let offset = 0; offset < keys.length; offset += 1000) {
+    const batch = keys.slice(offset, offset + 1000);
+    const r = await fetch(`${b}/storage/v1/object/${ARCHIVE_BUCKET}`, {
+      method: "DELETE",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ prefixes: batch }),
+    });
+    if (!r.ok) throw new Error(`archive_delete_failed:${r.status}`);
+    deleted += batch.length;
   }
 
-  // 2) media_assets 행 삭제 (storage 삭제 실패와 무관하게 항상 시도)
-  try {
-    const r = await fetch(`${b}/rest/v1/media_assets?user_id=eq.${encodeURIComponent(userId)}`, {
-      method: "DELETE",
-      headers: authHeaders({ "Content-Type": "application/json", Prefer: "return=minimal" }),
-    });
-    if (!r.ok) console.error("[archive] withdraw rows delete failed:", r.status, await r.text());
-  } catch (e) {
-    console.error("[archive] withdraw rows error:", e.message);
-  }
+  // 성공 응답을 받았어도 파일이 남거나 지연된 업로드가 도착했다면 재시도가 필요하다.
+  if ((await listAllKeys(`${userId}/`)).length) throw new Error("archive_files_remaining");
+
+  // 2) 원본 삭제 확인 후 media_assets 행 삭제. 실패하면 다음 요청에서 재시도할 수 있다.
+  const r = await fetch(`${b}/rest/v1/media_assets?user_id=eq.${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+    headers: authHeaders({ "Content-Type": "application/json", Prefer: "return=minimal" }),
+  });
+  if (!r.ok) throw new Error(`archive_rows_delete_failed:${r.status}`);
 
   return { deleted };
 }
