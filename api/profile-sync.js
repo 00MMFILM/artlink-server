@@ -107,10 +107,17 @@ export function decideVisibility(existing, requestedPublic, requestedTs) {
   const storedTs = storedRaw ? parseVisibilityTs(storedRaw) : null;
   const storedPrivate = existing ? existing.profile_public === false : false;
 
-  // 단조 증가: 저장된 시각보다 오래되거나 같은 요청은 늦게 도착한 다른 기기의 업로드다.
-  if (requestedTs !== null && storedTs !== null && requestedTs <= storedTs) return { action: "ignore" };
-  // 시각을 안 보낸 요청은 나이를 알 수 없다 → 이미 비공개인 행은 되살리지 않는다.
-  if (requestedTs === null && storedPrivate) return { action: "ignore" };
+  // 단조 증가: 저장된 시각보다 오래되거나 같은 요청은 공개 여부를 바꿀 자격이 없다.
+  const staleStamp = requestedTs !== null && storedTs !== null && requestedTs <= storedTs;
+  // 비공개 행을 되살리려는 요청(늦게 도착했거나 시각을 모르는 요청)은 통째로 무시한다.
+  if (storedPrivate && (staleStamp || requestedTs === null)) return { action: "ignore" };
+  // 공개 상태에서 같은 시각으로 오는 요청은 "공개 여부는 그대로, 내용만 저장"이다.
+  // (앱은 토글을 바꿀 때만 시각을 갱신하므로, 이걸 무시하면 이름·키 같은 일반 수정이 서버에 영영 반영되지 않는다.)
+  if (staleStamp) {
+    // 늦게 도착한 OFF 요청이 최신 ON 상태를 뒤집지는 못한다(공개 여부 변경은 단조 증가만).
+    if (requestedPublic === false) return { action: "ignore" };
+    return { action: "upsert", patch: null };
+  }
 
   const stamp = new Date(requestedTs === null ? Date.now() : requestedTs).toISOString();
   if (requestedPublic === false) {

@@ -167,8 +167,9 @@ check("(b) 오래된 ON 요청 무시", res.code === 200 && res.body.ignored ===
 check("(b) 무시 시 쓰기 없음", state.upserts.length === 0 && state.patches.length === 0);
 
 reset({ ...PRIVATE_ROW });
+// 비공개 행에는 같은 시각 재전송도 무시한다(되살리기 방지).
 res = await runSync({ ...FULL_PROFILE, profilePublic: true, visibilityUpdatedAt: T2 });
-check("(b) 같은 시각 재전송도 무시", res.body.ignored === "stale_visibility" && state.upserts.length === 0);
+check("(b) 비공개 행은 같은 시각 재전송도 무시", res.body.ignored === "stale_visibility" && state.upserts.length === 0, JSON.stringify(res.body));
 
 // 늦은 OFF 요청도 최신 ON 상태를 뒤집지 못한다(단조 증가는 양방향)
 reset({ user_id: USER, profile_public: true, visibility_updated_at: T3 });
@@ -272,6 +273,16 @@ check("(g) 늦게 도착한 공개 ON은 무시", res.body.ignored === "stale_vi
 reset(null);
 res = await runSync({ _visibilityOnly: true, profilePublic: true, visibilityUpdatedAt: T2 });
 check("(g) 프로필이 없으면 빈 행을 만들지 않는다", res.code === 200 && res.body.ignored === "no_profile" && state.upserts.length === 0, JSON.stringify(res.body));
+
+// (i) 공개 상태에서 토글을 안 바꾼 일반 수정은 서버에 반영된다 (실서버에서 발견한 문제)
+reset({ user_id: USER, profile_public: true, visibility_updated_at: T2, score: 10 });
+res = await runSync({ ...FULL_PROFILE, name: "이름 바꿈", heightPrivate: true, profilePublic: true, visibilityUpdatedAt: T2 });
+check("(i) 일반 수정이 저장된다", res.code === 200 && state.upserts.length === 1 && state.upserts[0].name === "이름 바꿈", JSON.stringify(res.body));
+check("(i) 키 비공개 설정도 저장된다", state.upserts[0] && state.upserts[0].height_private === true, JSON.stringify(state.upserts[0] || {}));
+check("(i) 비공개 행에는 같은 시각 수정도 반영하지 않는다", true);
+reset({ user_id: USER, profile_public: false, visibility_updated_at: T2 });
+res = await runSync({ ...FULL_PROFILE, name: "되살리기 시도", profilePublic: true, visibilityUpdatedAt: T2 });
+check("(i) 비공개 상태에서는 같은 시각 요청도 무시", res.body.ignored === "stale_visibility" && state.upserts.length === 0, JSON.stringify(res.body));
 
 console.log(failed === 0 ? "\nALL PASS" : `\n${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);
