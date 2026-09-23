@@ -15,7 +15,16 @@ import { serverMileageFor, nonDecreasingMileage } from "./_mileage.js";
 // 컬럼 부재 시에도 프로필 동기화 자체는 깨지면 안 된다.
 export function isMissingColumnError(error) {
   const msg = (error && error.message) || "";
-  return error?.code === "42703" || /column .* does not exist/i.test(msg);
+  const code = error?.code || "";
+  // 42703: 포스트그레스 직접 오류.
+  // PGRST204: PostgREST 스키마 캐시에 컬럼이 없을 때(실측 2026-09-23: 마이그레이션 전 운영 DB 응답).
+  return (
+    code === "42703" ||
+    code === "PGRST204" ||
+    /column .* does not exist/i.test(msg) ||
+    /could not find the .* column/i.test(msg) ||
+    /schema cache/i.test(msg)
+  );
 }
 
 // 마이그레이션 전에는 없을 수 있는 선택 컬럼 — upsert 실패 시 이 키들만 빼고 재시도한다.
