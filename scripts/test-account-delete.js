@@ -73,6 +73,10 @@ globalThis.fetch = async (url, init = {}) => {
   const table = u.pathname.replace("/mock/rest/v1/", "");
   if (u.pathname.includes("/rest/v1/")) {
     if (state.failure === table) return json({ message: "test failure" }, 503);
+    // 구버전 DB: 표가 아예 없는 경우(PostgREST는 404 + PGRST205로 답한다)
+    if (state.missingTable === table) {
+      return json({ code: "PGRST205", message: `Could not find the table 'public.${table}' in the schema cache` }, 404);
+    }
     if (method === "GET" && table === "users") {
       const owned = state.users.filter((r) => u.search.includes(r.auth_user_id));
       return json(owned.map((r) => ({ id: r.id })));
@@ -104,6 +108,7 @@ function mockRes() {
 function reset() {
   state.calls = [];
   state.failure = null;
+  state.missingTable = null;
   state.users = [
     { id: OWNER_INTERNAL, auth_user_id: OWNER_AUTH },
     { id: OTHER_INTERNAL, auth_user_id: OTHER_AUTH },
@@ -224,6 +229,15 @@ state.failure = null;
 res = await run();
 check("(d) 재시도에서 내부 id 자료까지 정리", res.code === 200 && res.body.deleted.artist_profiles === 1 && res.body.deleted.users === 1, JSON.stringify(res.body.deleted));
 check("(d) 다른 사용자 프로필 보존", state.rows.artist_profiles.length === 1 && state.rows.artist_profiles[0].owner === OTHER_INTERNAL);
+
+// (h) 없는 표(구버전 DB·미적용 마이그레이션)는 "지울 것 없음"으로 보고 탈퇴를 막지 않는다
+reset();
+state.missingTable = "growth_vectors";
+res = await run();
+check("(h) 없는 표가 있어도 탈퇴가 완료된다", res.code === 200 && res.body.complete === true, JSON.stringify(res.body));
+check("(h) 없는 표는 0건으로 보고", res.body.deleted.growth_vectors === 0, JSON.stringify(res.body.deleted));
+check("(h) 나머지 단계는 정상 수행", res.body.deleted.user_notes > 0 && state.calls.some((c) => c.startsWith("DELETE /mock/rest/v1/users")), state.calls.join(" | "));
+check("(h) 다른 사용자 자료는 그대로", state.rows.user_notes.every((r) => r.auth_user_id !== OWNER_AUTH) && state.rows.user_notes.length > 0, JSON.stringify(state.rows.user_notes));
 
 console.log(failed === 0 ? "\nALL PASS" : `\n${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);

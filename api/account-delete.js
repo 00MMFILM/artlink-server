@@ -32,12 +32,31 @@ const EXCLUDES = [
 const SCOPE = "authenticated_account";
 
 // 본인 식별자 목록으로만 DELETE. 삭제된 행 수를 돌려준다(없으면 0 — 재시도 시 정상 경로).
+// 표나 컬럼이 없는 환경(구버전 DB·미적용 마이그레이션)에서는 지울 것도 없다.
+// 이걸 실패로 처리하면 사용자가 영원히 탈퇴를 끝내지 못한다.
+function isMissingRelation(error) {
+  const code = error?.code || "";
+  const msg = (error?.message || "").toLowerCase();
+  return (
+    code === "42P01" ||
+    code === "42703" ||
+    code === "PGRST205" ||
+    code === "PGRST204" ||
+    msg.includes("does not exist") ||
+    msg.includes("could not find the table") ||
+    msg.includes("schema cache")
+  );
+}
+
 async function deleteOwned(table, column, values, selectCol) {
   if (!Array.isArray(values) || values.length === 0) return 0;
   let q = supabase.from(table).delete();
   q = values.length === 1 ? q.eq(column, values[0]) : q.in(column, values);
   const { data, error } = await q.select(selectCol);
-  if (error) throw new Error(`${table}:${error.message}`);
+  if (error) {
+    if (isMissingRelation(error)) return 0;
+    throw new Error(`${table}:${error.message}`);
+  }
   return (data || []).length;
 }
 
@@ -111,7 +130,10 @@ export default async function handler(req, res) {
       .update({ auth_user_id: null })
       .eq("auth_user_id", authId)
       .select("id");
-    if (error) throw new Error(`practice_events:${error.message}`);
+    if (error) {
+      if (isMissingRelation(error)) return 0;
+      throw new Error(`practice_events:${error.message}`);
+    }
     return (data || []).length;
   });
 

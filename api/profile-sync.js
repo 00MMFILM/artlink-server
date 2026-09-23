@@ -169,10 +169,19 @@ export default async function handler(req, res) {
   const { row: existingRow } = await fetchExistingProfile(supabase, userId);
   const storedPrivate = existingRow ? existingRow.profile_public === false : false;
 
+  // 서버가 기억하는 현재 공개 상태 — 모든 응답에 실어, 이 사실을 모르는 다른 기기가
+  // 나중에 새 시각으로 다시 공개로 되돌리는 것을 앱이 스스로 막게 한다.
+  const storedVisibility = existingRow
+    ? {
+        profilePublic: existingRow.profile_public === false ? false : true,
+        visibilityUpdatedAt: existingRow.visibility_updated_at || undefined,
+      }
+    : {};
+
   // 사진만 부분 업데이트 (전체 프로필 덮어쓰기 방지)
   if (p._photosOnly) {
     // 비공개 묘비 행에 사진만 다시 밀어넣는 것도 되살리기다 — 막는다.
-    if (storedPrivate) return res.status(200).json({ ok: true, ignored: "stale_visibility" });
+    if (storedPrivate) return res.status(200).json({ ok: true, ignored: "stale_visibility", ...storedVisibility });
     try {
       const { error } = await supabase
         .from("artist_profiles")
@@ -191,7 +200,7 @@ export default async function handler(req, res) {
   if (p._visibilityOnly) {
     const only = decideVisibility(existingRow, requestedPublic, requestedTs);
     if (only.action === "ignore") {
-      return res.status(200).json({ ok: true, ignored: "stale_visibility" });
+      return res.status(200).json({ ok: true, ignored: "stale_visibility", ...storedVisibility });
     }
     if (only.action === "tombstone") {
       try {
@@ -213,8 +222,8 @@ export default async function handler(req, res) {
       }
     }
     // 공개 ON: 올릴 프로필 내용이 이 요청에 없으므로 행을 새로 만들지 않는다.
-    if (!existingRow) return res.status(200).json({ ok: true, ignored: "no_profile" });
-    if (!only.patch) return res.status(200).json({ ok: true, ignored: "no_visibility_stamp" });
+    if (!existingRow) return res.status(200).json({ ok: true, ignored: "no_profile", ...storedVisibility });
+    if (!only.patch) return res.status(200).json({ ok: true, ignored: "no_visibility_stamp", ...storedVisibility });
     try {
       const { error } = await supabase
         .from("artist_profiles")
@@ -239,7 +248,7 @@ export default async function handler(req, res) {
 
   const decision = decideVisibility(existingRow, requestedPublic, requestedTs);
   if (decision.action === "ignore") {
-    return res.status(200).json({ ok: true, ignored: "stale_visibility" });
+    return res.status(200).json({ ok: true, ignored: "stale_visibility", ...storedVisibility });
   }
 
   // 공개 OFF — 개인정보만 비우고 묘비 행으로 남긴다. 점수·마일리지 재계산은 하지 않는다.
@@ -321,8 +330,11 @@ export default async function handler(req, res) {
       score: row.score,
       mileage: result.mileageSkipped ? undefined : row.mileage,
       level: result.mileageSkipped ? undefined : row.level,
-      profilePublic: decision.patch ? true : undefined,
-      visibilityUpdatedAt: decision.patch ? decision.patch.visibility_updated_at : undefined,
+      // 공개 여부는 항상 서버 기준값을 돌려준다 — 앱이 다른 기기의 변경을 알 수 있게.
+      profilePublic: decision.patch ? true : storedVisibility.profilePublic,
+      visibilityUpdatedAt: decision.patch
+        ? decision.patch.visibility_updated_at
+        : storedVisibility.visibilityUpdatedAt,
     });
   } catch (e) {
     console.error("[profile-sync]", e.message);
