@@ -1,6 +1,36 @@
 // B2B 프로필 브라우징 — 서버가 필터·중복제거 후 민감정보(이메일 등) 제거하여 반환.
 // anon의 select("*") 이메일 유출을 대체.
+// 공개 OFF(profile_public=false) 묘비 행은 결과에서 제외한다. 컬럼이 아직 없는 구버전 DB에서는
+// 해당 필터만 빼고 기존 동작으로 재조회한다 (migrations/2026-09-23-profile-visibility.sql).
 import { supabase, checkAppToken, stripSensitive, cors } from "./_profileLib.js";
+import { isMissingColumnError } from "./profile-sync.js";
+
+// 비공개 제외 필터를 뺀 것 외에는 동일한 조회. 컬럼 부재 폴백을 위해 매번 새로 조립한다.
+export function buildBrowseQuery(client, f, { excludePrivate }) {
+  let query = client
+    .from("artist_profiles")
+    .select("*")
+    .order("score", { ascending: false })
+    .limit(50);
+
+  // 공개 OFF는 제외. 마이그레이션이 NOT NULL DEFAULT TRUE라 기존 행은 전부 공개로 남는다.
+  // (검색어도 or()를 쓰므로 여기서는 or()를 겹쳐 쓰지 않는다)
+  if (excludePrivate) query = query.neq("profile_public", false);
+  if (f.gender) query = query.eq("gender", f.gender);
+  // 비공개 값을 범위 검색에 사용해도 노출 여부로 값을 추정할 수 있다.
+  if (f.heightMin || f.heightMax) query = query.eq("height_private", false);
+  if (f.heightMin) query = query.gte("height", Number(f.heightMin));
+  if (f.heightMax) query = query.lte("height", Number(f.heightMax));
+  if (f.field) query = query.contains("fields", [f.field]);
+  if (f.specialties && f.specialties.length > 0) query = query.overlaps("specialties", f.specialties);
+  if (f.location) query = query.ilike("location", `%${f.location}%`);
+  if (f.search) {
+    // PostgREST or() 인젝션 방어: 콤마·괄호·별표 등 구조 문자 제거 후 길이 제한
+    const s = String(f.search).replace(/[,()*\\]/g, "").trim().slice(0, 100);
+    if (s) query = query.or(`name.ilike.%${s}%,agency.ilike.%${s}%`);
+  }
+  return query;
+}
 
 export default async function handler(req, res) {
   cors(res);
@@ -10,27 +40,10 @@ export default async function handler(req, res) {
 
   const f = req.body || {};
   try {
-    let query = supabase
-      .from("artist_profiles")
-      .select("*")
-      .order("score", { ascending: false })
-      .limit(50);
-
-    if (f.gender) query = query.eq("gender", f.gender);
-    // 비공개 값을 범위 검색에 사용해도 노출 여부로 값을 추정할 수 있다.
-    if (f.heightMin || f.heightMax) query = query.eq("height_private", false);
-    if (f.heightMin) query = query.gte("height", Number(f.heightMin));
-    if (f.heightMax) query = query.lte("height", Number(f.heightMax));
-    if (f.field) query = query.contains("fields", [f.field]);
-    if (f.specialties && f.specialties.length > 0) query = query.overlaps("specialties", f.specialties);
-    if (f.location) query = query.ilike("location", `%${f.location}%`);
-    if (f.search) {
-      // PostgREST or() 인젝션 방어: 콤마·괄호·별표 등 구조 문자 제거 후 길이 제한
-      const s = String(f.search).replace(/[,()*\\]/g, "").trim().slice(0, 100);
-      if (s) query = query.or(`name.ilike.%${s}%,agency.ilike.%${s}%`);
+    let { data, error } = await buildBrowseQuery(supabase, f, { excludePrivate: true });
+    if (error && isMissingColumnError(error)) {
+      ({ data, error } = await buildBrowseQuery(supabase, f, { excludePrivate: false }));
     }
-
-    const { data, error } = await query;
     if (error) throw error;
 
     // ① 가입(로그인) 계정만 노출: auth_user_id 있는 users의 프로필만.
