@@ -38,33 +38,23 @@ export default async function handler(req, res) {
     }
 
     if (ACTIVATE.has(type)) {
-      // comp(평생무료·베타 지정)는 구독 이벤트로 절대 덮지 않는다.
-      // 덮으면 kind가 sub가 되어 이후 EXPIRATION에서 평생무료 권한까지 해제됨.
-      const { data: existing, error: selErr } = await supabase
-        .from("premium_members")
-        .select("kind")
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (selErr) throw selErr;
-
-      if (existing?.kind === "comp") {
-        console.log("[rc-webhook] skip activate (comp protected):", userId, type);
-      } else {
-        const { error } = await supabase.from("premium_members").upsert({
-          user_id: userId,
-          kind: "sub",
-          active: true,
-          note: `rc:${type}:${event.product_id || ""}:${new Date().toISOString()}`,
-        });
-        if (error) throw error;
-        console.log("[rc-webhook] activated:", userId, type);
-      }
+      // comp(평생무료·베타 지정)로 등록된 사람이 실제로 결제하면 kind를 sub로 승격한다.
+      // 승격하지 않으면 실결제가 장부에 안 남아 해지·만료·환불을 추적할 수 없다.
+      const { error } = await supabase.from("premium_members").upsert({
+        user_id: userId,
+        kind: "sub",
+        active: true,
+        note: `rc:${type}:${event.product_id || ""}:${new Date().toISOString()}`,
+      });
+      if (error) throw error;
+      console.log("[rc-webhook] activated:", userId, type);
     } else if (DEACTIVATE.has(type)) {
+      // kind 무관 — RevenueCat이 만료를 알렸는데 kind가 comp라 안 꺼지면 무료 이용이 무한정 남는다.
+      // (comp만 가진 사람은 애초에 RevenueCat 이벤트가 생기지 않는다.)
       const { error } = await supabase
         .from("premium_members")
         .update({ active: false, note: `rc:${type}:${new Date().toISOString()}` })
-        .eq("user_id", userId)
-        .eq("kind", "sub"); // 수동 등록(comp)은 건드리지 않음
+        .eq("user_id", userId);
       if (error) throw error;
       console.log("[rc-webhook] deactivated:", userId, type);
     } else {

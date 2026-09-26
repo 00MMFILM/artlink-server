@@ -33,6 +33,10 @@ const VALID_EVENTS = new Set([
   "focus_selected",
   "repractice_started",
   "duet_to_note",
+  // 1.11.8 가입 직후 첫 체크인 화면 — 노출·저장·나중에
+  "first_checkin_shown",
+  "first_checkin_saved",
+  "first_checkin_skipped",
 ]);
 
 export default async function handler(req, res) {

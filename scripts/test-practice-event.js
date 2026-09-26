@@ -6,13 +6,19 @@
 // (d) 51건 → 400
 // (e) 잘못된 event 값 → 400
 // (f) X-App-Token 없음 → 401 (DB 호출 전에 막혀야 함)
+// (h) practice_abandoned + elapsedMs → 200, elapsed_ms가 그대로 실린다
+// (i) elapsedMs가 정수·0 이상·24시간 이하가 아니면 400
+// (j) elapsed_ms 컬럼이 아직 없으면(42703) 그 필드만 빼고 재시도해 200
+// (k) event CHECK에 practice_abandoned가 아직 없으면(23514) 그 건만 빼고 재시도해 200
 process.env.SUPABASE_URL = "http://127.0.0.1:9/mock";
 process.env.SUPABASE_SERVICE_KEY = "test-key";
 process.env.APP_SECRET = "test-secret";
 
 let upsertCalls = 0;
 let lastBody = null;
+let bodies = []; // 재시도 검증용 — upsert 호출마다의 요청 본문
 let nextUpsertRows = []; // 다음 upsert 응답으로 돌려줄 "실제 삽입된" 행들
+let nextErrors = []; // 앞에서부터 하나씩 꺼내 쓰는 PostgREST 오류 (비면 성공 응답)
 
 globalThis.fetch = async (url, init = {}) => {
   const u = new URL(url);
@@ -20,6 +26,14 @@ globalThis.fetch = async (url, init = {}) => {
   if (u.pathname.includes("/practice_events") && method === "POST") {
     upsertCalls++;
     lastBody = JSON.parse(init.body || "[]");
+    bodies.push(lastBody);
+    const err = nextErrors.shift();
+    if (err) {
+      return new Response(JSON.stringify(err), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     return new Response(JSON.stringify(nextUpsertRows), {
       status: 201,
       headers: { "Content-Type": "application/json" },
@@ -162,6 +176,69 @@ function req(events) {
   const p = rows.find((r) => r.client_event_id === uuidN(9));
   check("(g) 미래 시각은 지금 이하로 보정", f && Date.parse(f.occurred_at) <= Date.now() + 1000, JSON.stringify(f));
   check("(g) 과거 시각은 그대로", p && p.occurred_at === past, JSON.stringify(p));
+}
+
+// (h) 이탈 이벤트 + 소요시간
+{
+  upsertCalls = 0;
+  bodies = [];
+  const events = [validEvent({ clientEventId: uuidN(10), event: "practice_abandoned", elapsedMs: 42000 })];
+  nextUpsertRows = [{ id: 10 }];
+  const res = mockRes();
+  await handler(req(events), res);
+  check("(h) practice_abandoned → 200", res.code === 200, `code=${res.code} body=${JSON.stringify(res.body)}`);
+  check("(h) elapsed_ms가 그대로 실린다", bodies[0]?.[0]?.elapsed_ms === 42000, JSON.stringify(bodies[0]));
+}
+
+// (i) elapsedMs 검증
+{
+  for (const [label, value] of [["음수", -1], ["실수", 1500.5], ["24시간 초과", 24 * 60 * 60 * 1000 + 1]]) {
+    upsertCalls = 0;
+    const res = mockRes();
+    await handler(req([validEvent({ clientEventId: uuidN(11), elapsedMs: value })]), res);
+    check(`(i) elapsedMs ${label} → 400`, res.code === 400, `code=${res.code} body=${JSON.stringify(res.body)}`);
+    check(`(i) elapsedMs ${label} — DB 호출 없음`, upsertCalls === 0, `calls=${upsertCalls}`);
+  }
+  // 없어도(구 버전 앱) 통과한다
+  upsertCalls = 0;
+  nextUpsertRows = [{ id: 11 }];
+  const res = mockRes();
+  await handler(req([validEvent({ clientEventId: uuidN(12) })]), res);
+  check("(i) elapsedMs 없음 → 200", res.code === 200, `code=${res.code}`);
+}
+
+// (j) elapsed_ms 컬럼 마이그레이션 전 — 그 필드만 빼고 재시도
+{
+  upsertCalls = 0;
+  bodies = [];
+  nextErrors = [{ code: "42703", message: `column "elapsed_ms" of relation "practice_events" does not exist` }];
+  nextUpsertRows = [{ id: 12 }];
+  const res = mockRes();
+  await handler(req([validEvent({ clientEventId: uuidN(13), elapsedMs: 1000 })]), res);
+  check("(j) 컬럼 부재여도 200", res.code === 200, `code=${res.code} body=${JSON.stringify(res.body)}`);
+  check("(j) 두 번째 시도에는 elapsed_ms가 없다", upsertCalls === 2 && !("elapsed_ms" in bodies[1][0]), JSON.stringify(bodies[1]));
+}
+
+// (k) event CHECK 마이그레이션 전 — practice_abandoned만 빼고 재시도
+{
+  upsertCalls = 0;
+  bodies = [];
+  nextErrors = [
+    { code: "23514", message: 'new row for relation "practice_events" violates check constraint "practice_events_event_check"' },
+  ];
+  nextUpsertRows = [{ id: 13 }];
+  const events = [
+    validEvent({ clientEventId: uuidN(14), event: "practice_completed" }),
+    validEvent({ clientEventId: uuidN(15), event: "practice_abandoned" }),
+  ];
+  const res = mockRes();
+  await handler(req(events), res);
+  check("(k) CHECK 위반이어도 나머지는 저장된다(200)", res.code === 200, `code=${res.code} body=${JSON.stringify(res.body)}`);
+  check(
+    "(k) 두 번째 시도에는 practice_abandoned가 없다",
+    upsertCalls === 2 && bodies[1].length === 1 && bodies[1][0].event === "practice_completed",
+    JSON.stringify(bodies[1])
+  );
 }
 
 console.log(failed === 0 ? "\nALL PASS" : `\n${failed} FAILED`);

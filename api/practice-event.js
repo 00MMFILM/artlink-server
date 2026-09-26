@@ -25,7 +25,7 @@ const supabase =
 
 const MAX_EVENTS = 50;
 
-const EVENT_WHITELIST = new Set(["practice_started", "practice_completed", "ai_feedback_done"]);
+const EVENT_WHITELIST = new Set(["practice_started", "practice_completed", "ai_feedback_done", "practice_abandoned"]);
 const KIND_WHITELIST = new Set(["text", "video", "checkin", "duet", "reanalysis"]);
 const PLATFORM_WHITELIST = new Set(["ios", "android"]);
 
@@ -43,7 +43,10 @@ const ALLOWED_KEYS = new Set([
   "language",
   "platform",
   "appVersion",
+  "elapsedMs", // 1.11.8 — 세션 시작부터 완료·이탈까지 걸린 시간
 ]);
+
+const MAX_ELAPSED_MS = 24 * 60 * 60 * 1000;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -86,6 +89,11 @@ function validateEvent(ev) {
   }
   if (typeof ev.appVersion !== "string" || ev.appVersion.length === 0 || ev.appVersion.length > 32) {
     return "appVersion must be a string(1-32)";
+  }
+  if (ev.elapsedMs !== undefined && ev.elapsedMs !== null) {
+    if (!Number.isInteger(ev.elapsedMs) || ev.elapsedMs < 0 || ev.elapsedMs > MAX_ELAPSED_MS) {
+      return `elapsedMs must be an integer between 0 and ${MAX_ELAPSED_MS}`;
+    }
   }
   return null;
 }
@@ -134,13 +142,29 @@ export default async function handler(req, res) {
     app_version: ev.appVersion,
     platform: ev.platform,
     language: ev.language ?? null,
+    elapsed_ms: ev.elapsedMs ?? null,
   }));
 
-  try {
-    const { data, error } = await supabase
+  // migrations/2026-09-26-practice-elapsed.sql(elapsed_ms 컬럼 + practice_abandoned CHECK)을
+  // 아직 실행하지 않았어도 나머지 계측이 500으로 막히면 안 된다 — 스키마가 거부하면 새 항목을
+  // 덜어내고 한 번 더 넣는다. 마이그레이션을 실행하면 첫 시도에서 바로 통과한다.
+  const send = (list) =>
+    supabase
       .from("practice_events")
-      .upsert(rows, { onConflict: "device_id,client_event_id", ignoreDuplicates: true })
+      .upsert(list, { onConflict: "device_id,client_event_id", ignoreDuplicates: true })
       .select("id");
+  const withoutElapsed = () => rows.map(({ elapsed_ms, ...rest }) => rest);
+
+  try {
+    let { data, error } = await send(rows);
+    if (error && (error.code === "42703" || error.code === "PGRST204")) {
+      ({ data, error } = await send(withoutElapsed()));
+    }
+    if (error && error.code === "23514") {
+      const known = withoutElapsed().filter((r) => r.event !== "practice_abandoned");
+      if (known.length === 0) return res.status(200).json({ accepted: 0, duplicates: rows.length });
+      ({ data, error } = await send(known));
+    }
     if (error) {
       console.error("[practice-event] upsert failed:", error.message);
       return res.status(500).json({ error: "db error" });
