@@ -7,9 +7,13 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-for (const line of fs.readFileSync(path.join(ROOT, ".env.local"), "utf8").split("\n")) {
-  const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
-  if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+if (process.argv.includes("--live")) {
+  for (const line of fs.readFileSync(path.join(ROOT, ".env.local"), "utf8").split("\n")) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+  }
+} else {
+  process.env.ANTHROPIC_API_KEY = "offline-test-only";
 }
 
 const { normalizeFocus, normalizePrevious, buildContextBlock, buildSystemPrompt } = await import(
@@ -203,7 +207,7 @@ for (const s of SAMPLES) {
     previous: normalizePrevious(s.previous),
     isPremium: s.premium,
   });
-  const system = s.video ? buildVideoSystemPrompt(s.field, true) : buildSystemPrompt(s.field, true, true);
+  const system = s.video ? buildVideoSystemPrompt(s.field, true, true) : buildSystemPrompt(s.field, true, true);
   let userText = s.note;
   if (s.video) {
     userText += `\n\n[영상 관찰 기록 — 영상 전체를 실제로 시청·청취한 전문 분석가의 타임스탬프 관찰]\n${OBSERVATION}`;
