@@ -7,6 +7,18 @@
 // - (e) field 화이트리스트, source 정규식
 // - (f) content 2000자 초과 절단
 // - (g) track-event가 신규 이벤트 6개를 200으로 받음(모킹)
+import { runInNewContext } from "node:vm";
+
+function emittedDeepLink(html) {
+  const decode = (value) => value.replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+  const dataset = Object.fromEntries([...html.matchAll(/data-([a-z-]+)="([^"]*)"/g)]
+    .map((m) => [m[1].replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()), decode(m[2])]));
+  const window = { location: { href: "" } };
+  const document = { getElementById: () => ({ dataset }), addEventListener() {} };
+  runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], { window, document, setTimeout() {}, encodeURIComponent });
+  return new URL(window.location.href);
+}
 
 let failed = 0;
 function check(name, cond, extra = "") {
@@ -127,6 +139,33 @@ const { default: practiceHandler } = await import("../api/practice.js");
 }
 
 // ── (g) track-event 신규 이벤트 6개 200 ───────────────────
+// ACT RAW 실제 최장 slug(62자)도 이름을 자르지 않고 sceneId(69자)로 이어진다.
+{
+  const longest = "daehanmingukeseo-geonmulju-doeneun-beop-jangdongcheol-ibanseok";
+  const res = mockRes();
+  await practiceHandler(mockReq(`/practice?title=Scene&content=Line&field=acting&source=actraw&m=${longest}`, UA_IOS), res);
+  const link = emittedDeepLink(res.body);
+  check("장면: 실제 최장 ACT RAW ID가 sceneId로 보존됨", link.searchParams.get("sceneId") === `actraw:${longest}`);
+  check("장면: 제목/본문/분야/출처는 기존과 동일", ["title", "content", "field", "source"].map((key) => link.searchParams.get(key)).join("|") === "Scene|Line|acting|actraw");
+  check("장면: 원래 m 파라미터를 중복 전송하지 않음", !link.searchParams.has("m"));
+
+  const boundary = mockRes();
+  await practiceHandler(mockReq(`/practice?source=actraw&m=${"a".repeat(64)}`, UA_IOS), boundary);
+  check("장면: 허용 경계 64자 ID는 그대로 전달", emittedDeepLink(boundary.body).searchParams.get("sceneId") === `actraw:${"a".repeat(64)}`);
+
+  for (const bad of ["", "a".repeat(65), "../private", "Hamlet", "a b", "<script>alert(1)</script>", "대본제목"]) {
+    const rejected = mockRes();
+    await practiceHandler(mockReq(`/practice?title=Kept&source=actraw&m=${encodeURIComponent(bad)}`, UA_IOS), rejected);
+    const rejectedLink = emittedDeepLink(rejected.body);
+    check(`장면: 부적절한 ID 제외 (${bad.slice(0, 12) || "empty"})`, !rejectedLink.searchParams.has("sceneId") && rejectedLink.searchParams.get("title") === "Kept");
+  }
+  for (const qs of ["source=actraw", "source=bium&m=hamlet-tobe", "source=actraw&m=hamlet-tobe&m=seagull-nina"]) {
+    const rejected = mockRes();
+    await practiceHandler(mockReq(`/practice?${qs}`, UA_IOS), rejected);
+    check(`장면: 누락·다른 출처·중복 ID 제외 (${qs})`, !emittedDeepLink(rejected.body).searchParams.has("sceneId"));
+  }
+}
+
 {
   process.env.SUPABASE_URL = "http://127.0.0.1:9/mock";
   process.env.SUPABASE_SERVICE_KEY = "test-key";

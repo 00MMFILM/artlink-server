@@ -75,7 +75,9 @@ function validateEvent(ev) {
   if (typeof ev.kind !== "string" || !KIND_WHITELIST.has(ev.kind)) {
     return "kind must be one of " + [...KIND_WHITELIST].join("|");
   }
-  if (!isNullableString(ev.subjectKey, 64)) return "subjectKey must be a string(<=64) or null";
+  // ACT RAW IDs can be 62 characters before the "actraw:" namespace. The DB
+  // column is TEXT; this also accepts every previous <=64-character client ID.
+  if (!isNullableString(ev.subjectKey, 96)) return "subjectKey must be a string(<=96) or null";
   if (!isNullableString(ev.field, 32)) return "field must be a string(<=32) or null";
   if (typeof ev.occurredAt !== "string" || Number.isNaN(Date.parse(ev.occurredAt))) {
     return "occurredAt must be a parseable ISO8601 timestamp";

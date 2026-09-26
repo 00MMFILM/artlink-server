@@ -2,7 +2,7 @@
 // ACT RAW(actraw.kr) 독백 페이지 등 외부 사이트의 버튼이
 // https://art-link.kr/practice?title=..&content=..&field=..&source=..&m=.. 로 들어온다.
 // 이 페이지는 앱 딥링크(artlink://practice?...)로 즉시 이동을 시도하고,
-// 1.5초 뒤에도 화면이 그대로면(앱 미설치) 스토어로 보낸다. `m`은 앱에 넘기지 않는다.
+// 1.5초 뒤에도 화면이 그대로면(앱 미설치) 스토어로 보낸다. ACT RAW의 `m`은 sceneId로 넘긴다.
 // DB 기록 없음 — 순수 브릿지 페이지.
 
 const APPSTORE = "https://apps.apple.com/kr/app/id6752890224";
@@ -10,6 +10,9 @@ const PLAY = "https://play.google.com/store/apps/details?id=com.mm00.artlink";
 
 const FIELD_WHITELIST = new Set(["acting", "music", "art", "dance", "literature", "film"]);
 const SOURCE_RE = /^[a-z0-9_-]{1,20}$/;
+// ACT RAW data.js의 MONOLOGUES는 소문자 영숫자/하이픈/밑줄 ID를 사용한다.
+// 제목을 식별자로 삼거나 긴 ID를 잘라 다른 장면과 충돌시키지 않는다.
+const ACTRAW_ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 const TITLE_MAX = 120;
 const CONTENT_MAX = 2000;
@@ -56,6 +59,9 @@ module.exports = async (req, res) => {
 
   const rawSource = params.get("source") || "";
   const source = SOURCE_RE.test(rawSource) ? rawSource : "external";
+  const monologueId = params.getAll("m").length === 1 ? params.get("m") : null;
+  const sceneId = source === "actraw" && typeof monologueId === "string" && ACTRAW_ID_RE.test(monologueId)
+    ? `actraw:${monologueId}` : "";
 
   const title = truncate(params.get("title") || "", TITLE_MAX);
   const content = truncate(params.get("content") || "", CONTENT_MAX);
@@ -70,10 +76,10 @@ module.exports = async (req, res) => {
   res.statusCode = 200;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
-  res.end(renderHtml({ titleSafe, contentSafe, titlePreview, field, source, storeUrl, tryDeepLink }));
+  res.end(renderHtml({ titleSafe, contentSafe, titlePreview, field, source, sceneId, storeUrl, tryDeepLink }));
 };
 
-function renderHtml({ titleSafe, contentSafe, titlePreview, field, source, storeUrl, tryDeepLink }) {
+function renderHtml({ titleSafe, contentSafe, titlePreview, field, source, sceneId, storeUrl, tryDeepLink }) {
   return `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -198,6 +204,7 @@ function renderHtml({ titleSafe, contentSafe, titlePreview, field, source, store
     data-content="${contentSafe}"
     data-field="${escapeHtml(field)}"
     data-source="${escapeHtml(source)}"
+    data-scene-id="${escapeHtml(sceneId)}"
   ></div>
 <script>
 (function () {
@@ -209,6 +216,7 @@ function renderHtml({ titleSafe, contentSafe, titlePreview, field, source, store
     + '&content=' + encodeURIComponent(d.content)
     + '&field=' + encodeURIComponent(d.field)
     + '&source=' + encodeURIComponent(d.source);
+  if (d.sceneId) qs += '&sceneId=' + encodeURIComponent(d.sceneId);
   var deepLink = 'artlink://practice?' + qs;
   var storeUrl = ${JSON.stringify(storeUrl)};
 

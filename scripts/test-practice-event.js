@@ -241,5 +241,26 @@ function req(events) {
   );
 }
 
+// ACT RAW stable IDs include a namespace; keep long real slugs without breaking
+// existing clients or accepting unbounded arbitrary metadata.
+{
+  const sceneId = "actraw:daehanmingukeseo-geonmulju-doeneun-beop-jangdongcheol-ibanseok";
+  check("장면 subjectKey: 실제 최장 fixture는 69자", sceneId.length === 69);
+  nextErrors = [];
+  nextUpsertRows = [{ id: 20 }];
+  for (const subjectKey of [null, "note-1", "a".repeat(64), sceneId, "a".repeat(96)]) {
+    upsertCalls = 0;
+    const res = mockRes();
+    await handler(req([validEvent({ subjectKey })]), res);
+    check(`장면 subjectKey: ${subjectKey?.length ?? "null"}자 값 허용`, res.code === 200 && upsertCalls === 1 && lastBody[0].subject_key === subjectKey);
+  }
+  for (const subjectKey of ["a".repeat(97), { sceneId }, [sceneId]]) {
+    upsertCalls = 0;
+    const res = mockRes();
+    await handler(req([validEvent({ subjectKey })]), res);
+    check("장면 subjectKey: 상한 초과/비문자열 거부", res.code === 400 && upsertCalls === 0);
+  }
+}
+
 console.log(failed === 0 ? "\nALL PASS" : `\n${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);
