@@ -237,7 +237,7 @@ function errorPage(title, message) {
 function applyBlock(apply) {
   const raw = apply.raw ? `<div class="meta" style="margin:10px 0 0">${escapeHtml(apply.raw)}</div>` : "";
   const copy = apply.raw
-    ? `<button class="btn ghost" type="button" data-copy="${escapeHtml(apply.raw)}">복사</button>`
+    ? `<button class="btn ghost" type="button" data-copy="${escapeHtml(apply.raw)}">복사</button><span class="hint" role="status" aria-live="polite" data-copy-status></span>`
     : "";
 
   if (apply.kind === "email") {
@@ -321,7 +321,21 @@ ${tags.length ? `  <div class="tags" style="margin-top:16px">${tags.map((t) => `
   </div>`;
 
   const script = apply.raw
-    ? `document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function(){b.textContent='복사됨';setTimeout(function(){b.textContent='복사';},1500);});});});`
+    ? `document.querySelectorAll('[data-copy]').forEach(function(b){
+  b.addEventListener('click',async function(){
+    var status=b.nextElementSibling;
+    try {
+      if(!navigator.clipboard || typeof navigator.clipboard.writeText!=='function') throw new Error('clipboard_unavailable');
+      await navigator.clipboard.writeText(b.getAttribute('data-copy'));
+      b.textContent='복사됨';
+      status.textContent='복사했습니다.';
+      setTimeout(function(){b.textContent='복사';status.textContent='';},1500);
+    } catch(_) {
+      b.textContent='복사';
+      status.textContent='복사하지 못했습니다. 표시된 지원 정보를 길게 눌러 복사해 주세요.';
+    }
+  });
+});`
     : "";
 
   return shell({

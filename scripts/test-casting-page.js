@@ -315,5 +315,59 @@ async function get(id = ID) {
   check("(n) 모든 외부 요청이 오프라인 Supabase mock 한 곳으로 한정", requests.every((u) => u.origin === "http://127.0.0.1:9" && u.pathname.endsWith("/rest/v1/postings")));
 }
 
+// 실제 응답의 스크립트를 실행한다. 브라우저/OS 권한 검증을 대신하지 않는 오프라인 DOM mock이다.
+{
+  const { runInNewContext } = await import("node:vm");
+  const contact = "casting+film@example.co.kr";
+  nextRows = [row({ contact })];
+  const res = await get();
+  const script = res.body.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  check("(o) 복사 결과 안내가 버튼 바로 옆 aria-live 영역에 표시", /data-copy="[^"]+">복사<\/button><span[^>]+role="status"[^>]+aria-live="polite"[^>]+data-copy-status/.test(res.body));
+
+  async function executeCopy(clipboardMode) {
+    const copied = [];
+    const timers = [];
+    const status = { textContent: "" };
+    let click;
+    const button = {
+      textContent: "복사",
+      nextElementSibling: status,
+      getAttribute: (name) => name === "data-copy" ? contact : null,
+      addEventListener: (event, callback) => { if (event === "click") click = callback; },
+    };
+    const navigator = clipboardMode === "unsupported" ? {} : {
+      clipboard: {
+        writeText(value) {
+          copied.push(value);
+          if (clipboardMode === "throw") throw new Error("Clipboard unavailable");
+          if (clipboardMode === "denied") return Promise.reject(new Error("NotAllowedError"));
+          return Promise.resolve();
+        },
+      },
+    };
+    runInNewContext(script, {
+      document: { querySelectorAll: (selector) => selector === "[data-copy]" ? [button] : [] },
+      navigator,
+      setTimeout: (callback, delay) => { timers.push({ callback, delay }); },
+    }, { timeout: 1000 });
+    let error = null;
+    try { await click(); } catch (err) { error = err; }
+    return { copied, timers, status, button, error };
+  }
+
+  const success = await executeCopy("success");
+  check("(o) Clipboard 성공 콜백이 실제 연락처를 한 번 복사", !success.error && success.copied.length === 1 && success.copied[0] === contact);
+  check("(o) 성공 후 버튼·접근성 안내 갱신", success.button.textContent === "복사됨" && success.status.textContent === "복사했습니다.");
+  check("(o) 성공 안내는 예약된 콜백 뒤 복구", success.timers.length === 1 && success.timers[0].delay === 1500);
+  success.timers[0]?.callback();
+  check("(o) 복구 콜백 실행 후 다시 복사 가능", success.button.textContent === "복사" && success.status.textContent === "");
+
+  for (const mode of ["denied", "unsupported", "throw"]) {
+    const result = await executeCopy(mode);
+    check(`(o) Clipboard ${mode}도 예외 대신 수동 복사 안내`, !result.error && result.button.textContent === "복사" && result.status.textContent.includes("표시된 지원 정보를 길게 눌러 복사해 주세요"));
+    check(`(o) Clipboard ${mode}에 거짓 성공·자동 숨김 없음`, result.timers.length === 0 && result.copied.length === (mode === "unsupported" ? 0 : 1));
+  }
+}
+
 console.log(failed === 0 ? `\nALL ${checked} PASS` : `\n${failed} / ${checked} FAILED`);
 process.exit(failed === 0 ? 0 : 1);
