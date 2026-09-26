@@ -4,6 +4,15 @@ import { supabase, checkAppToken, verifyOwnership, cors } from "./_profileLib.js
 import { serverScoreFor } from "./_score.js";
 import { serverMileageFor } from "./_mileage.js";
 
+// artist-browse imports this for read-only compatibility with older schemas.
+// Profile writes never use it to bypass the atomic RPC.
+export function isMissingColumnError(error) {
+  const message = error?.message || "";
+  return error?.code === "42703" || error?.code === "PGRST204" ||
+    /column .* does not exist/i.test(message) ||
+    /could not find the .* column/i.test(message) || /schema cache/i.test(message);
+}
+
 export function resolveMileage(serverResult, appMileage) {
   const server = serverResult && Number.isFinite(serverResult.mileage) ? serverResult.mileage : null;
   const app = Number.isFinite(appMileage) && appMileage > 0 ? appMileage : 0;
