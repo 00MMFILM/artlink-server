@@ -274,6 +274,15 @@ reset(null);
 res = await runSync({ _visibilityOnly: true, profilePublic: true, visibilityUpdatedAt: T2 });
 check("(g) 프로필이 없으면 빈 행을 만들지 않는다", res.code === 200 && res.body.ignored === "no_profile" && state.upserts.length === 0, JSON.stringify(res.body));
 
+// (j) 1.11.8 구버전 OFF 백필: 행이 없는 계정의 OFF는 빈 묘비를 만들지 않고, 앱이 대기를 끌 수 있게 시각을 돌려준다
+reset(null);
+res = await runSync({ _visibilityOnly: true, profilePublic: false, visibilityUpdatedAt: T2 });
+check("(j) 행 없는 OFF는 묘비 행을 만들지 않는다", res.code === 200 && res.body.ignored === "no_profile" && state.upserts.length === 0 && state.patches.length === 0, JSON.stringify(res.body));
+check("(j) 응답에 OFF와 요청 시각이 실린다", res.body.profilePublic === false && res.body.visibilityUpdatedAt === T2, JSON.stringify(res.body));
+reset({ user_id: USER, name: "테스터", profile_public: true, visibility_updated_at: null });
+res = await runSync({ _visibilityOnly: true, profilePublic: false, visibilityUpdatedAt: T2 });
+check("(j) 스탬프 없는 기존 공개 행(마이그레이션 기본값)은 OFF 백필로 묘비 처리", res.code === 200 && res.body.profilePublic === false && state.upserts.length === 1 && state.upserts[0].profile_public === false && state.upserts[0].name === "익명", JSON.stringify(state.upserts[0] || res.body));
+
 // (i) 공개 상태에서 토글을 안 바꾼 일반 수정은 서버에 반영된다 (실서버에서 발견한 문제)
 reset({ user_id: USER, profile_public: true, visibility_updated_at: T2, score: 10 });
 res = await runSync({ ...FULL_PROFILE, name: "이름 바꿈", heightPrivate: true, profilePublic: true, visibilityUpdatedAt: T2 });

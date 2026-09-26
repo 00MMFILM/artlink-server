@@ -219,6 +219,17 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, ignored: "stale_visibility", ...storedVisibility });
     }
     if (only.action === "tombstone") {
+      // 행이 없으면 지울 것도 없다 — 새 계정은 기본이 OFF라서 여기서 빈 묘비를 만들면 가입자 수만큼
+      // 쓸모없는 행이 쌓인다(1.11.8 구버전 OFF 백필이 이 경로로 들어온다). 앱이 대기 표시를 끌 수 있게
+      // 요청한 시각을 그대로 돌려준다.
+      if (!existingRow) {
+        return res.status(200).json({
+          ok: true,
+          ignored: "no_profile",
+          profilePublic: false,
+          visibilityUpdatedAt: only.patch.visibility_updated_at,
+        });
+      }
       try {
         const result = await upsertProfileRow(
           supabase,
