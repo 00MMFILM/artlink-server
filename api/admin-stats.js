@@ -3,6 +3,7 @@
 // 게이트: X-App-Token (집계 수치만 반환, PII·device_id 미노출).
 import { createClient } from "@supabase/supabase-js";
 import { checkAppToken, rejectAppToken } from "./_usage.js";
+import { loadPracticeStats } from "./_practiceStats.js";
 
 const supabase =
   process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
@@ -16,42 +17,13 @@ function normPlatform(p) {
   return "other";
 }
 
-// 반복 연습 집계 (2단계, 2026-09-13). schema-practice-events.sql 마이그레이션 전에는
-// practice_repeat_7d 뷰가 없다(42P01) — 그때는 500이 아니라 available:false로 응답한다.
+// The legacy SQL view includes incomplete observation windows and future dates.
+// Compute from paginated events instead; no production migration is required.
 async function getPracticeStats() {
   try {
-    const { data: cohorts, error: viewError } = await supabase
-      .from("practice_repeat_7d")
-      .select("*");
-    if (viewError) {
-      if (viewError.code === "42P01") return { available: false };
-      throw viewError;
-    }
-
-    const since = new Date(Date.now() - 28 * 86400000).toISOString();
-    const { data: recentRows, error: recentError } = await supabase
-      .from("practice_events")
-      .select("device_id, kind")
-      .eq("event", "practice_completed")
-      .gte("occurred_at", since);
-    if (recentError) throw recentError;
-
-    const devices = new Set();
-    const byKind = {};
-    for (const r of recentRows || []) {
-      devices.add(r.device_id);
-      byKind[r.kind] = (byKind[r.kind] || 0) + 1;
-    }
-
-    return {
-      available: true,
-      repeat7dByWeek: cohorts || [],
-      last28d: {
-        completedDevices: devices.size,
-        completedEvents: (recentRows || []).length,
-        byKind,
-      },
-    };
+    const excludedDeviceIds = (process.env.ANALYTICS_EXCLUDED_DEVICE_IDS || "")
+      .split(",").map((id) => id.trim()).filter(Boolean);
+    return await loadPracticeStats(supabase, { excludedDeviceIds });
   } catch (e) {
     console.error("[admin-stats] practice:", e.message);
     return { available: false };
