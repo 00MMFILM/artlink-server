@@ -1,5 +1,6 @@
-// 프로필 삭제(탈퇴/공개해제) — 소유권 검증 후 본인 것만 삭제.
+// 구버전 공개해제 경로: 실제 회원탈퇴(account-delete)와 달리 OFF 묘비를 보존한다.
 import { supabase, checkAppToken, verifyOwnership, cors } from "./_profileLib.js";
+import { writeProfileAtomically } from "./profile-sync.js";
 
 export default async function handler(req, res) {
   cors(res);
@@ -14,11 +15,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { error } = await supabase.from("artist_profiles").delete().eq("user_id", userId);
-    if (error) throw error;
-    return res.status(200).json({ ok: true });
+    const result = await writeProfileAtomically(supabase, { userId, mode: "delete" });
+    return res.status(200).json(result);
   } catch (e) {
     console.error("[profile-delete]", e.message);
-    return res.status(500).json({ error: "delete failed" });
+    return res.status(503).json({ error: "profile_sync_unavailable", retryable: true });
   }
 }

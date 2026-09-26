@@ -14,7 +14,7 @@ import {
 } from "../api/_mileage.js";
 // profile-sync.js는 import 시점에 _profileLib.js가 supabase 클라이언트를 생성한다.
 // 정적 import는 호이스팅되어 위 process.env 설정보다 먼저 평가되므로 동적 import로 늦춘다.
-const { upsertProfileRow, isMissingColumnError, resolveMileage } = await import("../api/profile-sync.js");
+const { writeProfileAtomically, resolveMileage } = await import("../api/profile-sync.js");
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra = "") {
@@ -100,53 +100,18 @@ const mockDbDown = {
 };
 ok("DB 장애 시 null(동기화 차단 안 함)", (await serverMileageFor(mockDbDown, "user-z")) === null);
 
-// ── 5) mileage/level 컬럼 부재(upsert 42703 에러) 시 폴백 동작
+// ── 5) RPC 미설치 시 직접 upsert/컬럼 제거 폴백을 하지 않는다.
 {
-  const upsertCalls = [];
-  const mockClient = {
-    from() {
-      return {
-        upsert(row) {
-          upsertCalls.push(row);
-          if (upsertCalls.length === 1) {
-            return Promise.resolve({
-              error: { code: "42703", message: 'column "mileage" of relation "artist_profiles" does not exist' },
-            });
-          }
-          return Promise.resolve({ error: null });
-        },
-      };
-    },
+  let rpcCalls = 0;
+  const client = {
+    rpc() { rpcCalls++; return Promise.resolve({ error: { code: "PGRST202", message: "RPC missing" } }); },
+    from() { throw new Error("unsafe direct write attempted"); },
   };
-  const row = { user_id: "u1", name: "테스트", mileage: 1333, level: 6 };
-  const mileagePatch = { mileage: 1333, level: 6 };
-  const result = await upsertProfileRow(mockClient, row, mileagePatch);
-  ok("컬럼 부재 시 폴백 성공(mileageSkipped)", result.ok === true && result.mileageSkipped === true, JSON.stringify(result));
-  ok("1차 시도엔 mileage/level 포함", "mileage" in upsertCalls[0] && "level" in upsertCalls[0]);
-  ok("재시도엔 mileage/level 제외", !("mileage" in upsertCalls[1]) && !("level" in upsertCalls[1]));
+  let message;
+  try { await writeProfileAtomically(client, { userId: "u1", mode: "full", row: { mileage: 1333 } }); }
+  catch (e) { message = e.message; }
+  ok("RPC 미설치 시 실패하며 직접 쓰기 금지", message === "RPC missing" && rpcCalls === 1);
 }
-
-// 컬럼 문제가 아닌 일반 에러는 폴백하지 않고 그대로 던진다
-{
-  const mockClient = {
-    from() {
-      return { upsert: () => Promise.resolve({ error: { code: "XX000", message: "db down" } }) };
-    },
-  };
-  let threw = false;
-  try {
-    await upsertProfileRow(mockClient, { user_id: "u2", mileage: 10, level: 1 }, { mileage: 10, level: 1 });
-  } catch (e) {
-    threw = e.message === "db down";
-  }
-  ok("일반 DB 에러는 폴백하지 않고 예외 전파", threw);
-}
-
-// isMissingColumnError 판별기 자체도 확인
-ok("42703 코드 인식", isMissingColumnError({ code: "42703", message: "x" }));
-ok('"column ... does not exist" 문구 인식', isMissingColumnError({ message: 'column "level" of relation "artist_profiles" does not exist' }));
-ok("무관한 에러는 false", !isMissingColumnError({ code: "XX000", message: "db down" }));
-
 
 // ── 회귀: 서버 결과(객체)+앱 값(숫자) 병합이 NaN/null을 만들면 안 된다 (2026-09-03 사고)
 {
