@@ -113,6 +113,7 @@ rcResponse = {
       entitlements: {
         premium: { expires_date: "2020-01-01T00:00:00Z", product_identifier: "artlink_premium_monthly" },
       },
+      subscriptions: { artlink_premium_monthly: { is_sandbox: false, expires_date: "2020-01-01T00:00:00Z" } },
     },
   },
 };
@@ -132,6 +133,7 @@ rcResponse = {
       entitlements: {
         premium: { expires_date: "2099-01-01T00:00:00Z", product_identifier: "artlink_premium_yearly" },
       },
+      subscriptions: { artlink_premium_yearly: { is_sandbox: false, expires_date: "2099-01-01T00:00:00Z" } },
     },
   },
 };
@@ -148,13 +150,39 @@ check(
 );
 check("(e) RevenueCat은 auth user id로 조회한다", rcCalls[0]?.endsWith("/v1/subscribers/user-1"), rcCalls[0]);
 
-// (e-2) 만료일 없는 비소멸성 구매도 활성으로 본다
+// (e-2) 명시적으로 expires_date:null인 운영 비소멸성 구매도 활성으로 본다
 rcResponse = {
   status: 200,
-  body: { subscriber: { entitlements: { premium: { product_identifier: "artlink_premium_lifetime" } } } },
+  body: { subscriber: {
+    entitlements: { premium: { product_identifier: "artlink_premium_lifetime", expires_date: null } },
+    non_subscriptions: { artlink_premium_lifetime: [{ is_sandbox: false }] },
+  } },
 };
 const e2 = await call();
-check("(e-2) expires_date 없으면 활성", e2.statusCode === 200 && e2.body.active === true, JSON.stringify(e2.body));
+check("(e-2) expires_date:null 운영 구매면 활성", e2.statusCode === 200 && e2.body.active === true, JSON.stringify(e2.body));
+
+// (g) sandbox 구매 복구는 운영 장부에 실결제로 등록하지 않는다.
+rcResponse = { status: 200, body: { subscriber: {
+  entitlements: { premium: { product_identifier: "monthly", expires_date: "2099-01-01T00:00:00Z" } },
+  subscriptions: { monthly: { is_sandbox: true, expires_date: "2099-01-01T00:00:00Z" } },
+} } };
+const g = await call();
+check("(g) sandbox 복구로 운영 sub를 만들지 않음", g.statusCode === 200 && g.body.active === false && upserts.length === 0, JSON.stringify(g.body));
+
+// (h) 유예 기간에는 구독을 복구한다.
+rcResponse.body.subscriber.entitlements.premium.grace_period_expires_date = "2099-01-01T00:00:00Z";
+rcResponse.body.subscriber.entitlements.premium.expires_date = "2020-01-01T00:00:00Z";
+rcResponse.body.subscriber.subscriptions.monthly = { is_sandbox: false, expires_date: "2020-01-01T00:00:00Z", grace_period_expires_date: "2099-01-01T00:00:00Z" };
+const h = await call();
+check("(h) 운영 구독 유예 기간은 활성", h.statusCode === 200 && h.body.active === true && upserts.length === 1, JSON.stringify(h.body));
+
+// (i) 일부 필드가 없는 응답을 평생 구매로 취급하지 않는다.
+delete rcResponse.body.subscriber.subscriptions.monthly;
+const i = await call();
+check("(i) 환경 불명 응답이면 복구 오류, 쓰기 없음", i.statusCode === 502 && upserts.length === 0, JSON.stringify(i.body));
+rcResponse = { status: 200, body: {} };
+const i2 = await call();
+check("(i) malformed subscriber도 비활성 성공으로 처리하지 않음", i2.statusCode === 502 && upserts.length === 0);
 
 console.log(failed === 0 ? "\nALL PASS" : `\n${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);

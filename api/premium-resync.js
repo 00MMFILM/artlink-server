@@ -7,8 +7,7 @@
 // 웹훅과 같은 형태로 upsert한다. 판정 기준은 언제나 RevenueCat(결제 정본)이다.
 import { createClient } from "@supabase/supabase-js";
 import { checkAppToken, rejectAppToken, identifyUser } from "./_usage.js";
-
-const ENTITLEMENT_ID = "premium"; // 앱 purchasesService.js의 ENTITLEMENT_ID와 같아야 한다
+import { fetchProductionPremium } from "./_revenuecat.js";
 
 const supabase =
   process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
@@ -31,31 +30,22 @@ export default async function handler(req, res) {
   // 키가 없으면 복구는 못 하지만 앱은 RevenueCat 판정을 그대로 쓴다 — 오류가 아니라 미구성이다.
   if (!secret || !supabase) return res.status(501).json({ ok: false, reason: "not_configured" });
 
-  let entitlement;
+  let state;
   try {
-    const rc = await fetch(
-      `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(user.id)}`,
-      { headers: { Authorization: `Bearer ${secret}` } }
-    );
-    if (!rc.ok) throw new Error(`rc_status_${rc.status}`);
-    const body = await rc.json();
-    entitlement = body?.subscriber?.entitlements?.[ENTITLEMENT_ID] || null;
+    state = await fetchProductionPremium(user.id, secret);
   } catch (e) {
     console.error("[premium-resync] revenuecat:", e.message);
     return res.status(502).json({ ok: false, reason: "revenuecat_unavailable" });
   }
 
-  // expires_date가 없으면 비소멸성(평생) 구매 — 만료 없음으로 본다.
-  const expires = entitlement?.expires_date ? Date.parse(entitlement.expires_date) : null;
-  const active = !!entitlement && (expires === null || expires > Date.now());
-  if (!active) return res.status(200).json({ ok: true, active: false });
+  if (!state.active) return res.status(200).json({ ok: true, active: false, ...(state.sandboxOnly ? { reason: "sandbox_purchase" } : {}) });
 
   try {
     const { error } = await supabase.from("premium_members").upsert({
       user_id: user.id,
       kind: "sub",
       active: true,
-      note: `resync:${entitlement.product_identifier || ""}:${new Date().toISOString()}`,
+      note: `resync:${state.productId || ""}:${new Date().toISOString()}`,
     });
     if (error) throw error;
   } catch (e) {
