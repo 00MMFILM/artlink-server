@@ -157,8 +157,8 @@ export async function fetchExistingProfile(supabaseClient, userId) {
       break;
     }
   }
-  if (lastError) console.error("[profile-sync] existing fetch failed:", lastError.message);
-  return { row: null, visibilitySupported: false };
+  // 조회 장애는 행 부재가 아니다. 공개 상태/점수의 정본을 읽지 못했으면 재시도해야 한다.
+  throw lastError || new Error("profile_read_failed");
 }
 
 export default async function handler(req, res) {
@@ -182,7 +182,13 @@ export default async function handler(req, res) {
     p.visibilityUpdatedAt !== undefined ? p.visibilityUpdatedAt : body.visibilityUpdatedAt
   );
 
-  const { row: existingRow } = await fetchExistingProfile(supabase, userId);
+  let existingRow;
+  try {
+    ({ row: existingRow } = await fetchExistingProfile(supabase, userId));
+  } catch (e) {
+    console.error("[profile-sync] existing fetch failed:", e.message);
+    return res.status(503).json({ error: "profile_read_failed", retryable: true });
+  }
   const storedPrivate = existingRow ? existingRow.profile_public === false : false;
 
   // 서버가 기억하는 현재 공개 상태 — 모든 응답에 실어, 이 사실을 모르는 다른 기기가
@@ -219,17 +225,8 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, ignored: "stale_visibility", ...storedVisibility });
     }
     if (only.action === "tombstone") {
-      // 행이 없으면 지울 것도 없다 — 새 계정은 기본이 OFF라서 여기서 빈 묘비를 만들면 가입자 수만큼
-      // 쓸모없는 행이 쌓인다(1.11.8 구버전 OFF 백필이 이 경로로 들어온다). 앱이 대기 표시를 끌 수 있게
-      // 요청한 시각을 그대로 돌려준다.
-      if (!existingRow) {
-        return res.status(200).json({
-          ok: true,
-          ignored: "no_profile",
-          profilePublic: false,
-          visibilityUpdatedAt: only.patch.visibility_updated_at,
-        });
-      }
+      // 행이 없어도 OFF 시각을 보존한다. 생략하면 아직 도착하지 않은 오래된 ON이
+      // 신규 공개 행을 만들 수 있다. 기본값 OFF와 명시적 OFF의 구별은 앱이 담당한다.
       try {
         const result = await upsertProfileRow(
           supabase,

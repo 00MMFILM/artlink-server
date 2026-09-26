@@ -25,6 +25,7 @@ const state = {
   patches: [],
   browseRows: [],
   visibilityColumns: true, // false면 profile_public/visibility_updated_at 컬럼이 없는 구 DB
+  readFailure: false,
 };
 
 function json(body, status = 200) {
@@ -49,6 +50,7 @@ globalThis.fetch = async (url, init = {}) => {
 
   if (table === "artist_profiles") {
     if (method === "GET") {
+      if (state.readFailure) return json({ code: "XX000", message: "temporary unavailable" }, 503);
       if (!state.visibilityColumns && select.includes("profile_public")) return missingColumn("profile_public");
       if (u.searchParams.has("user_id")) {
         // maybeSingle — 없으면 null
@@ -139,6 +141,7 @@ function reset(existing = null, { visibilityColumns = true } = {}) {
   state.patches = [];
   state.existing = existing;
   state.visibilityColumns = visibilityColumns;
+  state.readFailure = false;
 }
 
 // ── (a) 공개 OFF → 묘비 행 ───────────────────────────────────────────────
@@ -274,11 +277,20 @@ reset(null);
 res = await runSync({ _visibilityOnly: true, profilePublic: true, visibilityUpdatedAt: T2 });
 check("(g) 프로필이 없으면 빈 행을 만들지 않는다", res.code === 200 && res.body.ignored === "no_profile" && state.upserts.length === 0, JSON.stringify(res.body));
 
-// (j) 1.11.8 구버전 OFF 백필: 행이 없는 계정의 OFF는 빈 묘비를 만들지 않고, 앱이 대기를 끌 수 있게 시각을 돌려준다
+// (j) 행 없는 OFF도 시각을 영속화해야 뒤늦은 ON이 새 행을 만들지 못한다.
 reset(null);
 res = await runSync({ _visibilityOnly: true, profilePublic: false, visibilityUpdatedAt: T2 });
-check("(j) 행 없는 OFF는 묘비 행을 만들지 않는다", res.code === 200 && res.body.ignored === "no_profile" && state.upserts.length === 0 && state.patches.length === 0, JSON.stringify(res.body));
+check("(j) 행 없는 OFF도 묘비와 시각을 보존", res.code === 200 && state.existing?.profile_public === false && state.existing?.visibility_updated_at === T2, JSON.stringify(res.body));
 check("(j) 응답에 OFF와 요청 시각이 실린다", res.body.profilePublic === false && res.body.visibilityUpdatedAt === T2, JSON.stringify(res.body));
+res = await runSync({ ...FULL_PROFILE, profilePublic: true, visibilityUpdatedAt: T1 });
+check("(j) 행 없을 때 OFF 이후의 늦은 ON을 차단", res.body.ignored === "stale_visibility" && state.existing?.profile_public === false && state.existing?.email === null);
+
+reset({ user_id: USER, name: "테스터", profile_public: true, visibility_updated_at: T1 });
+state.readFailure = true;
+res = await runSync({ _visibilityOnly: true, profilePublic: false, visibilityUpdatedAt: T2 });
+check("(j) DB 조회 실패를 no-profile 성공으로 위장하지 않음", res.code === 503 && !res.body.ok && state.upserts.length === 0 && state.patches.length === 0, JSON.stringify(res.body));
+res = await runSync({ ...FULL_PROFILE, profilePublic: true, visibilityUpdatedAt: T3 });
+check("(j) DB 조회 실패 시 전체 프로필도 쓰기 중단", res.code === 503 && state.upserts.length === 0);
 reset({ user_id: USER, name: "테스터", profile_public: true, visibility_updated_at: null });
 res = await runSync({ _visibilityOnly: true, profilePublic: false, visibilityUpdatedAt: T2 });
 check("(j) 스탬프 없는 기존 공개 행(마이그레이션 기본값)은 OFF 백필로 묘비 처리", res.code === 200 && res.body.profilePublic === false && state.upserts.length === 1 && state.upserts[0].profile_public === false && state.upserts[0].name === "익명", JSON.stringify(state.upserts[0] || res.body));
