@@ -26,6 +26,8 @@ const SOURCE_NAMES = {
 };
 
 const APP_LINK = "/app?s=casting";
+// 공개 페이지에 필요한 컬럼만 읽는다. 내부 메모·수집 원본·지원 조건 객체는 가져오지 않는다.
+const PUBLIC_COLUMNS = "id,source,source_url,title,company,category,description,deadline,pay,location,contact,tags,status";
 
 function escapeHtml(str) {
   return String(str == null ? "" : str).replace(/[&<>"']/g, (c) => {
@@ -45,31 +47,38 @@ function escapeHtml(str) {
 }
 
 function safeUrl(value) {
-  return typeof value === "string" && /^https?:\/\/[^\s<>"']+$/i.test(value.trim()) ? value.trim() : "";
+  if (typeof value !== "string") return "";
+  const candidate = value.trim();
+  // URL 파서가 보정하는 역슬래시/제어문자나 복합 문장을 링크로 만들지 않는다.
+  if (!/^https?:\/\//i.test(candidate) || /[\s\\<>"'\u0000-\u001f\u007f]/.test(candidate) || /%(?:0[0-9a-f]|1[0-9a-f]|7f)/i.test(candidate)) return "";
+  try {
+    const parsed = new URL(candidate);
+    if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname || parsed.username || parsed.password) return "";
+    return parsed.href;
+  } catch (_) {
+    return "";
+  }
 }
 
-// 앱 MatchingPostDetailScreen과 같은 판정식
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// 단일 ASCII 주소만 직접 연다. mailto 쿼리·헤더·혼합 문장은 원문 확인으로 남긴다.
+const EMAIL_RE = /^[a-z0-9](?:[a-z0-9._+-]*[a-z0-9])?@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/i;
 const PHONE_RE = /^0\d{1,2}-?\d{3,4}-?\d{4}$/;
 
-// 지원 방법 판정: contact 우선(이메일 → 전화 → 폼 URL), 없으면 원문 링크, 둘 다 없으면 확인 중.
+// URL을 먼저 판정한다. 지원 폼 쿼리 안의 이메일을 mailto로 잘못 해석하면 안 된다.
 function resolveApply(contactRaw, sourceUrlRaw) {
   const contact = typeof contactRaw === "string" ? contactRaw.trim() : "";
   const sourceUrl = safeUrl(sourceUrlRaw);
 
   if (contact) {
-    const compact = contact.replace(/\s/g, "");
-    if (EMAIL_RE.test(contact)) return { kind: "email", value: contact, raw: contact };
-    if (PHONE_RE.test(compact)) return { kind: "phone", value: compact, raw: contact };
-    if (safeUrl(contact)) return { kind: "form", value: safeUrl(contact), raw: contact };
-    // 문장 안에 섞여 저장된 경우 첫 항목만 꺼내 쓴다(원문 전체도 함께 보여준다).
-    const email = contact.match(/[^\s<>()"',]+@[^\s<>()"',]+\.[a-z]{2,}/i);
-    if (email) return { kind: "email", value: email[0], raw: contact };
-    const url = contact.match(/https?:\/\/[^\s<>"']+/i);
-    if (url) return { kind: "form", value: url[0], raw: contact };
-    const phone = compact.match(/0\d{1,2}-?\d{3,4}-?\d{4}/);
-    if (phone) return { kind: "phone", value: phone[0], raw: contact };
-    return { kind: "text", value: "", raw: contact };
+    const url = safeUrl(contact);
+    if (url) return { kind: "form", value: url, raw: contact };
+    const localPart = contact.split("@")[0];
+    if (contact.length <= 254 && localPart.length <= 64 && !/(^\.|\.$|\.\.)/.test(localPart) && EMAIL_RE.test(contact)) {
+      return { kind: "email", value: contact, raw: contact };
+    }
+    const compact = contact.replace(/ /g, "");
+    if (PHONE_RE.test(compact)) return { kind: "phone", value: compact.replace(/-/g, ""), raw: contact };
+    return { kind: "text", value: sourceUrl, raw: contact };
   }
 
   if (sourceUrl) return { kind: "source", value: sourceUrl, raw: "" };
@@ -78,10 +87,12 @@ function resolveApply(contactRaw, sourceUrlRaw) {
 
 // deadline은 'YYYY-MM-DD' 텍스트 컬럼. KST 오늘 기준으로 D-day를 센다.
 function resolveDeadline(deadline) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline || "")) return { label: "마감일 미정", expired: false, date: "" };
+  const unknown = { label: "마감일 미정", expired: false, date: "" };
+  if (typeof deadline !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return unknown;
+  const parsed = new Date(`${deadline}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== deadline) return unknown;
   const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
-  const days = Math.round((Date.parse(`${deadline}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
-  if (Number.isNaN(days)) return { label: "마감일 미정", expired: false, date: "" };
+  const days = Math.round((parsed.getTime() - Date.parse(`${today}T00:00:00Z`)) / 86400000);
   if (days < 0) return { label: "마감됨", expired: true, date: deadline };
   if (days === 0) return { label: "오늘 마감", expired: false, date: deadline };
   return { label: `D-${days}`, expired: false, date: deadline };
@@ -95,9 +106,19 @@ function send(res, statusCode, cacheControl, html) {
 }
 
 module.exports = async (req, res) => {
+  if (!["GET", "HEAD"].includes(req.method)) {
+    res.setHeader("Allow", "GET, HEAD");
+    return send(res, 405, "no-store", errorPage("지원하지 않는 요청입니다", "공고 링크를 다시 열어주세요."));
+  }
   let id = "";
   try {
-    id = new URL(req.url, "http://x").searchParams.get("id") || "";
+    const url = new URL(req.url, "http://x");
+    // Vercel의 rewrite query와 직접 API 요청 모두 받되, 중복 id는 거절한다.
+    if (req.query && Object.prototype.hasOwnProperty.call(req.query, "id")) {
+      id = typeof req.query.id === "string" ? req.query.id : "";
+    } else if (url.searchParams.getAll("id").length === 1) {
+      id = url.searchParams.get("id");
+    }
   } catch (_) {}
 
   // postings.id는 uuid — 숫자 id를 DB에 넘기면 타입 오류(500)가 나므로 여기서 400으로 끊는다.
@@ -110,7 +131,7 @@ module.exports = async (req, res) => {
 
   let row = null;
   try {
-    const { data, error } = await supabase.from("postings").select("*").eq("id", id).limit(1);
+    const { data, error } = await supabase.from("postings").select(PUBLIC_COLUMNS).eq("id", id).limit(1);
     if (error) throw new Error(error.message);
     row = (data && data[0]) || null;
   } catch (err) {
@@ -122,7 +143,16 @@ module.exports = async (req, res) => {
     return send(res, 404, "no-store", errorPage("공고를 찾을 수 없습니다", "삭제되었거나 주소가 바뀐 공고입니다."));
   }
 
-  return send(res, 200, "public, max-age=300", renderPage(row));
+  // 수집 중·보류 등 알 수 없는 상태는 공개하지 않는다. 만료/비활성 행의 연락처도 숨긴다.
+  if (row.status !== "active" && row.status !== "inactive") {
+    return send(res, 404, "no-store", errorPage("공고를 찾을 수 없습니다", "공개 중인 공고가 아닙니다."));
+  }
+  if (row.status === "inactive" || resolveDeadline(row.deadline).expired) {
+    return send(res, 410, "no-store", errorPage("마감된 공고입니다", "마감되었거나 공개가 종료된 공고입니다."));
+  }
+
+  // 공개 중이던 공고의 연락처가 종료 후 캐시에서 계속 보이지 않도록 저장하지 않는다.
+  return send(res, 200, "no-store", renderPage(row));
 };
 
 const STYLE = `
@@ -200,7 +230,7 @@ function errorPage(title, message) {
     script: "",
     bodyHtml: `  <h1>${escapeHtml(title)}</h1>
   <p class="meta">${escapeHtml(message)}</p>
-  <a class="btn" href="${APP_LINK}">다른 공고 보기</a>`,
+  <a class="btn" href="${APP_LINK}">아트링크 앱 다운로드</a>`,
   });
 }
 
@@ -213,7 +243,7 @@ function applyBlock(apply) {
   if (apply.kind === "email") {
     return `  <div class="box">
     <div class="k">지원 방법</div>
-    <div class="row"><a class="btn" href="mailto:${escapeHtml(apply.value)}">이메일로 지원하기</a>${copy}</div>${raw}
+    <div class="row"><a class="btn" href="mailto:${escapeHtml(encodeURIComponent(apply.value).replace(/%40/g, "@"))}">이메일로 지원하기</a>${copy}</div>${raw}
   </div>`;
   }
   if (apply.kind === "phone") {
@@ -232,7 +262,7 @@ function applyBlock(apply) {
     return `  <div class="box">
     <div class="k">지원 방법</div>
     <div class="v">${escapeHtml(apply.raw)}</div>
-    <div class="row" style="margin-top:12px">${copy}</div>
+    <div class="row" style="margin-top:12px">${copy}${apply.value ? `<a class="btn" href="${escapeHtml(apply.value)}" target="_blank" rel="noopener noreferrer">원문에서 지원 방법 확인</a>` : ""}</div>
   </div>`;
   }
   if (apply.kind === "source") {
@@ -252,10 +282,11 @@ function renderPage(row) {
   const platform = SOURCE_NAMES[row.source] || row.source || "출처 미상";
   const apply = resolveApply(row.contact, row.source_url);
   const deadline = resolveDeadline(row.deadline);
-  const closed = row.status !== "active";
 
   const description = String(row.description || "").replace(/\s+/g, " ").trim();
-  const ogDescription = `${platform} · ${deadline.label}${description ? ` · ${description.slice(0, 100)}` : ""}`;
+  const characters = Array.from(description);
+  const excerpt = characters.slice(0, 280).join("") + (characters.length > 280 ? "…" : "");
+  const ogDescription = `${platform} · ${deadline.label}${description ? ` · ${characters.slice(0, 100).join("")}` : ""}`;
 
   const tags = Array.isArray(row.tags) ? row.tags.slice(0, 8) : [];
   const metaLine = [row.company, row.location, row.pay].filter(Boolean).join(" · ");
@@ -271,22 +302,22 @@ function renderPage(row) {
   const deadlineBlock = `  <div class="box">
     <div class="k">마감</div>
     <div class="row">
-      <span class="badge${deadline.expired || closed ? " off" : ""}">${escapeHtml(closed && !deadline.expired ? "마감됨" : deadline.label)}</span>
+      <span class="badge">${escapeHtml(deadline.label)}</span>
       ${deadline.date ? `<span class="meta" style="margin:0">${escapeHtml(deadline.date)}</span>` : ""}
     </div>
   </div>`;
 
   const bodyHtml = `  <h1>${escapeHtml(row.title || "제목 없음")}</h1>
   ${metaLine ? `<p class="meta">${escapeHtml(metaLine)}</p>` : `<p class="meta">${escapeHtml(row.category || "")}</p>`}
-${closed ? `  <div class="notice">삭제·마감된 공고입니다. <a href="${APP_LINK}">다른 공고 보기</a></div>\n` : ""}${sourceBlock}
+${sourceBlock}
 ${applyBlock(apply)}
 ${deadlineBlock}
 ${tags.length ? `  <div class="tags" style="margin-top:16px">${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>` : ""}
-  <div class="body">${escapeHtml(row.description || "")}</div>
+  <div class="body">${excerpt ? `<div class="k">공고 요약</div>${escapeHtml(excerpt)}` : "자세한 모집 조건은 원문을 확인해 주세요."}</div>
   <div class="foot">
-    <a class="btn block" href="${APP_LINK}&id=${escapeHtml(row.id)}">아트링크 앱에서 보기</a>
+    <a class="btn block" href="${APP_LINK}">아트링크 앱 다운로드</a>
     ${sourceUrl ? `<a class="btn ghost block" href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">원문 보기</a>` : ""}
-    <p class="hint">공고 내용과 지원처는 원문 게시자가 올린 그대로입니다. 지원 전 원문에서 한 번 더 확인해 주세요.</p>
+    <p class="hint">모집 조건과 지원 방법은 원문에서 확인해 주세요. 지원 버튼을 열어도 지원이 완료되지는 않습니다.</p>
   </div>`;
 
   const script = apply.raw
