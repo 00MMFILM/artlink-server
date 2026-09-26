@@ -29,6 +29,10 @@
     {
       "source": "/practice",
       "destination": "/api/practice"
+    },
+    {
+      "source": "/casting/:id",
+      "destination": "/api/casting?id=:id"
     }
   ],
   "headers": [
