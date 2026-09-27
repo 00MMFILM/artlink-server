@@ -37,6 +37,11 @@ const VALID_EVENTS = new Set([
   "first_checkin_shown",
   "first_checkin_saved",
   "first_checkin_skipped",
+  // 1.11.9 재촬영 → 비교: 기기별 최초 도달만 기록. 반복 횟수는 practice_events로 집계한다.
+  "retake_capture_added",
+  "retake_analysis_done",
+  "compare_viewed",
+  "resume_card_tapped",
 ]);
 
 export default async function handler(req, res) {
