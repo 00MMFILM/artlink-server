@@ -98,6 +98,14 @@ if (!process.argv.includes("--live")) {
     console.log(okGate ? "PASS " : "FAIL ", "wantFocus 게이팅: 플래그 없으면 FOCUS 지시 없음, SCORES는 유지");
     if (!okGate) failed++;
   }
+  // 앱이 🎨(롤모델 없음)·📈(이전 기록 없음)를 뺀 요청을 보내면 서버가 전체 형식을 강제하지 않는다 (2026-09-27)
+  for (const [name, prompt] of [["ai-analyze", buildSystemPrompt("acting", true, true)], ["analyze-video", buildVideoSystemPrompt("acting", true)]]) {
+    ok(`${name}: 앱이 요청한 섹션만 쓰고 나머지는 생략`, prompt.includes("앱이 요청한 섹션만") && prompt.includes("요청하지 않") && prompt.includes("생략하세요"));
+    ok(`${name}: 섹션 이름을 별도 줄로 출력하지 말라고 명시`, prompt.includes("섹션 이름을 별도 줄로 출력하지 말고"));
+    ok(`${name}: 전체 형식 강제 문구 없음`, !/형식\([^)]*\)을 (반드시 )?따르/.test(prompt));
+    ok(`${name}: FOCUS 규약 유지`, prompt.includes("[[FOCUS]] 후보1 | 후보2 | 후보3"));
+  }
+  ok("ai-analyze: SCORES 규약 유지", buildSystemPrompt("acting", true, true).includes("[[SCORES]]"));
   console.log(`\n(실 API 검증은 --live 플래그로 실행)\n${failed ? `${failed} FAILED` : "UNIT ALL PASS"}`);
   process.exit(failed ? 1 : 0);
 }
