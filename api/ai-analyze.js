@@ -15,8 +15,9 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // 생성 메타 — 노트에 함께 저장되어 나중에 품질 비교·학습 데이터 필터의 기준이 된다
 import { paramChain, textOf, isRefusal } from "./_model.js";
-const PROMPT_VERSION = "2026-09-26.1";
+const PROMPT_VERSION = "2026-09-27.1";
 import { evidenceInstruction } from "./_analysisEvidence.js";
+import { feedbackLanguageInstruction } from "./_feedbackLanguage.js";
 
 // 성장 궤적 분석용 5축 점수 — 신버전 앱(wantScores)에서만 요청. 구버전 앱엔 안 붙여 마커 노출 방지.
 const SCORING_INSTRUCTION = `
@@ -274,7 +275,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { prompt, field, noteTitle, noteLocalId, wantScores, wantFocus, frames, focus, previous } = req.body;
+    const { prompt, field, noteTitle, noteLocalId, wantScores, wantFocus, frames, focus, previous, feedbackLanguage } = req.body;
 
     if (!prompt) {
       return res.status(400).json({ error: "prompt is required" });
@@ -304,13 +305,18 @@ export default async function handler(req, res) {
       },
     ];
 
-    // 비한국어 노트 감지 → 응답 언어 강제 (한국어 few-shot이 지배적이라 명시 블록 필요)
+    // Explicit output language wins over the script's language. Keep the existing
+    // heuristic for old clients and unsupported values. This block follows the
+    // cached examples, so the same prefix can safely serve either language.
+    const explicitLanguage = feedbackLanguageInstruction(feedbackLanguage);
     const hangulCount = (prompt.match(/[가-힣]/g) || []).length;
     const cjkCount = (prompt.match(/[ぁ-んァ-ヶ一-龯]/g) || []).length; // 일본어·중국어
     const latinCount = (prompt.match(/[A-Za-z]/g) || []).length;
     const langTotal = hangulCount + cjkCount + latinCount;
     const isNonKorean = langTotal > 30 && hangulCount / langTotal < 0.15;
-    if (isNonKorean) {
+    if (explicitLanguage) {
+      systemBlocks.push({ type: "text", text: explicitLanguage });
+    } else if (isNonKorean) {
       systemBlocks.push({
         type: "text",
         text: "CRITICAL OVERRIDE — RESPONSE LANGUAGE: The user's note is NOT written in Korean. You MUST write your ENTIRE feedback in the same language as the user's note (English note → English feedback, Indonesian → Indonesian, Japanese → Japanese, etc.). Do NOT write in Korean under any circumstances. The Korean examples above are for structure and quality reference only — keep the emoji section format, but write every sentence in the user's language.",
@@ -438,7 +444,9 @@ export default async function handler(req, res) {
 
     // If truncated, append closing so it doesn't end abruptly
     if (msg.stop_reason === "max_tokens") {
-      analysis += "\n\n---\n(분석이 길어져 일부 생략되었습니다)";
+      analysis += feedbackLanguage === "en"
+        ? "\n\n---\n(The response reached its length limit and is incomplete.)"
+        : "\n\n---\n(분석이 길어져 일부 생략되었습니다)";
     }
 
     if (!analysis || analysis.trim().length < 10) {

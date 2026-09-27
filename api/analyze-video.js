@@ -11,6 +11,7 @@ import {
 } from "./_usage.js";
 import { hasDataConsent, copyTempToArchive, upsertMediaAsset, titleHash } from "./_archive.js";
 import { evidenceInstruction } from "./_analysisEvidence.js";
+import { feedbackLanguageInstruction } from "./_feedbackLanguage.js";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -21,7 +22,7 @@ export const config = { maxDuration: 300 };
 import { paramChain, textOf, isRefusal } from "./_model.js";
 // 초점·비교 규약은 ai-analyze.js와 한 곳에서 관리한다 (두 엔드포인트가 같은 숨김 줄 계약을 쓴다)
 import { FOCUS_INSTRUCTION, normalizeFocus, normalizePrevious, buildContextBlock } from "./ai-analyze.js";
-const PROMPT_VERSION = "2026-09-26.1";
+const PROMPT_VERSION = "2026-09-27.1";
 
 // ── Gemini 영상 관찰 경로 ──
 // 프레임 요약의 한계(움직임·소리 증발)를 보완: 영상을 통째로 Gemini가 시청·청취하고
@@ -262,7 +263,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { prompt, field, noteTitle, noteLocalId, frames, frameTimes, videoUrl, transcript, focus, previous, wantFocus } =
+    const { prompt, field, noteTitle, noteLocalId, frames, frameTimes, videoUrl, transcript, focus, previous, wantFocus, feedbackLanguage } =
       req.body;
 
     if (!prompt || !frames || frames.length === 0) {
@@ -352,15 +353,17 @@ export default async function handler(req, res) {
       isPremium,
     });
 
-    // 비한국어 요청 감지 → 응답 언어 강제 (한국어 few-shot 지배 방지)
+    // Explicit feedback language is independent of the source material language;
+    // old clients and unsupported values retain the existing heuristic below.
+    const explicitLanguage = feedbackLanguageInstruction(feedbackLanguage);
     const hangulCount = (prompt.match(/[가-힣]/g) || []).length;
     const cjkCount = (prompt.match(/[ぁ-んァ-ヶ一-龯]/g) || []).length; // 일본어·중국어
     const latinCount = (prompt.match(/[A-Za-z]/g) || []).length;
     const langTotal = hangulCount + cjkCount + latinCount;
     const isNonKorean = langTotal > 30 && hangulCount / langTotal < 0.15;
-    const languageOverride = isNonKorean
+    const languageOverride = explicitLanguage || (isNonKorean
       ? "\n\nCRITICAL OVERRIDE — RESPONSE LANGUAGE: The user's request is NOT in Korean. Write your ENTIRE feedback in the same language as the user's request (English → English, Indonesian → Indonesian, etc.). Do NOT write in Korean. Keep the emoji section format."
-      : "";
+      : "");
     content.push({ type: "text", text: userText });
 
     // 시스템은 요청 간 동일 → 캐싱 (Sonnet 4.6 최소 프리픽스 2048토큰)
@@ -396,7 +399,9 @@ export default async function handler(req, res) {
     let analysis = rawText.startsWith("📌") ? rawText : "📌 " + rawText;
 
     if (msg.stop_reason === "max_tokens") {
-      analysis += "\n\n---\n(분석이 길어져 일부 생략되었습니다)";
+      analysis += feedbackLanguage === "en"
+        ? "\n\n---\n(The response reached its length limit and is incomplete.)"
+        : "\n\n---\n(분석이 길어져 일부 생략되었습니다)";
     }
 
     if (!analysis || analysis.trim().length < 10) {
