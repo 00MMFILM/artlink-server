@@ -32,7 +32,7 @@ const copy = {
     opportunitySteps: ['원문 확인', '지원 방법 확인', '앱에서 준비'], opportunityNote: '인스타그램에서 본 공고는 해당 스토리의 개별 공고 링크로 확인하세요. 공고마다 마감·지역·지원 조건이 다릅니다.',
     faqTitle: '시작하기 전에 궁금한 것들.',
     faqs: [
-      ['무료로 쓸 수 있나요?', '앱은 무료로 다운로드할 수 있습니다. AI 피드백에는 이용 한도가 있고, 구독과 추가 이용 상품이 있습니다. 현재 한도·가격·갱신 조건은 앱의 이용량 안내와 결제 화면에서 확인할 수 있습니다.'],
+      ['무료로 쓸 수 있나요?', '앱은 무료로 다운로드할 수 있습니다. AI 피드백에는 무료 이용 한도가 있고, 더 많이 쓰려면 월간·연간 구독을 선택할 수 있습니다. 현재 한도·가격·갱신 조건은 앱의 이용량 안내와 결제 화면에서 확인할 수 있습니다.'],
       ['영어 대사도 연습할 수 있나요?', '대사 연습실에서 한국어·영어 장면을 선택하고, 피드백 언어도 한국어·영어 중 고를 수 있습니다. 영어 대사를 한국어로 복기하는 연습도 가능합니다.'],
       ['AI가 발음이나 연기 실력을 채점하나요?', '녹음 피드백은 전사된 대사와 입력한 맥락을 바탕으로 합니다. 발음·억양 점수를 제공하지 않으며 합격이나 실력 향상을 보장하지 않습니다. 영상 피드백도 제공된 자료에서 확인 가능한 내용을 바탕으로 참고하세요.'],
       ['연습한 내용은 공개되나요?', '연습 노트를 저장하는 것과 커뮤니티에 게시하는 것은 별개의 동작입니다. AI 분석을 요청하면 필요한 자료가 분석 서비스로 전송됩니다. 자세한 처리·보관 내용은 개인정보처리방침을 확인해 주세요.']
@@ -67,7 +67,7 @@ const copy = {
     opportunitySteps: ['Read the source', 'Check how to apply', 'Prepare in the app'], opportunityNote: 'Most current listings are in Korean. Check language, location, deadline and eligibility in each original listing.',
     faqTitle: 'A few things before you start.',
     faqs: [
-      ['Is ArtLink free?', 'The app is free to download. AI feedback has usage limits, with subscriptions and additional usage products available. Check the current allowances, prices and renewal terms in the app before purchasing.'],
+      ['Is ArtLink free?', 'The app is free to download. AI feedback has free usage limits, and monthly or yearly subscriptions are available for more. Check the current allowances, prices and renewal terms in the app before purchasing.'],
       ['Can I rehearse in English?', 'The studio includes English and Korean scenes. Choose English or Korean feedback separately from the script language, so you can reflect in the language you prefer.'],
       ['Does AI grade my accent or acting ability?', 'Recording feedback uses transcribed words and the context you provide. It does not score pronunciation or accent, or guarantee an audition result. Treat video feedback as suggestions grounded in the material provided.'],
       ['Is my practice public?', 'Saving a practice note and posting to the community are separate actions. Requesting AI analysis sends the necessary material to analysis services. Read the privacy policy for processing and retention details.']
