@@ -12,8 +12,17 @@ const PLAY = "https://play.google.com/store/apps/details?id=com.mm00.artlink";
 const LANDING = "https://art-link.kr/launch";
 
 module.exports = async (req, res) => {
+  if (req.method && !["GET", "HEAD"].includes(req.method)) {
+    res.statusCode = 405;
+    res.setHeader("Allow", "GET, HEAD");
+    return res.end();
+  }
+  const params = new URL(req.url, "http://x").searchParams;
   const ua = req.headers["user-agent"] || "";
-  const platform = /android/i.test(ua)
+  // An explicit store button must work on desktop too. Destinations are fixed;
+  // arbitrary platform values never become redirect URLs.
+  const requested = params.get("platform");
+  const platform = ["ios", "android"].includes(requested) ? requested : /android/i.test(ua)
     ? "android"
     : /iphone|ipad|ipod|macintosh/i.test(ua)
     ? "ios"
@@ -21,16 +30,21 @@ module.exports = async (req, res) => {
   const dest = platform === "android" ? PLAY : platform === "ios" ? APPSTORE : LANDING;
 
   try {
-    const url = new URL(req.url, "http://x");
-    const source = (url.searchParams.get("s") || "direct").slice(0, 40);
+    const candidate = params.get("s");
+    const source = /^[a-z0-9_-]{1,40}$/.test(candidate || "") ? candidate : "direct";
     // 봇/크롤러 노이즈 제외 (미리보기 등)
     const isBot = /bot|crawl|spider|facebookexternalhit|preview|slurp|bingpreview/i.test(ua);
-    if (supabase && !isBot) {
+    if (supabase && !isBot && req.method !== "HEAD") {
+      let referer = null;
+      try {
+        const from = new URL(req.headers["referer"]);
+        if (["https:", "http:"].includes(from.protocol)) referer = `${from.origin}${from.pathname}`.slice(0, 300);
+      } catch (_) {}
       await supabase.from("link_clicks").insert({
         link: "app",
         source,
         platform,
-        referer: (req.headers["referer"] || "").slice(0, 300) || null,
+        referer,
       });
     }
   } catch (_) {}

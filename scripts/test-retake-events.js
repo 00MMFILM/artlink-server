@@ -29,7 +29,7 @@ async function post(body) {
   await handler({ method: "POST", body }, res);
   return res;
 }
-const events = ["retake_capture_added", "retake_analysis_done", "compare_viewed", "resume_card_tapped"];
+const events = ["retake_capture_added", "retake_analysis_done", "compare_viewed", "resume_card_tapped", "home_practice_tapped", "home_material_tapped", "home_feedback_tapped"];
 let checked = 0;
 for (const event of events) {
   const before = calls.length;
