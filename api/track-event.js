@@ -42,6 +42,10 @@ const VALID_EVENTS = new Set([
   "retake_analysis_done",
   "compare_viewed",
   "resume_card_tapped",
+  // Growth home: unique-device milestones, not recurring practice counts.
+  "home_practice_tapped",
+  "home_material_tapped",
+  "home_feedback_tapped",
 ]);
 
 export default async function handler(req, res) {
