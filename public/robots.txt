@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /practice
+Sitemap: https://art-link.kr/sitemap.xml
