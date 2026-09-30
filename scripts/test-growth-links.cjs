@@ -30,6 +30,11 @@ async function run(url, ua = 'desktop', method = 'GET', referer = '') {
   await run('/app?platform=ios','previewbot'); await run('/app?platform=ios','desktop','HEAD');
   assert.equal(calls.length,count,'previews and HEAD requests do not count as a store click');
   const invalid = await run('/app','desktop','POST'); assert.equal(invalid.statusCode,405);assert.equal(calls.length,count);
+  const IG='Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Instagram 350.0.0.0';
+  let ig = await run('/app',IG); assert.equal(ig.headers.Location,'https://art-link.kr/launch/?s=instagram_bio','bare bio link from Instagram opens the landing'); assert.equal(calls.at(-1).row.source,'instagram_bio');
+  ig = await run('/app?platform=ios',IG); assert.equal(new URL(ig.headers.Location).hostname,'apps.apple.com','explicit store buttons inside Instagram still go to the store');
+  ig = await run('/app?s=reel_42',IG); assert.equal(new URL(ig.headers.Location).hostname,'apps.apple.com','campaign links keep their store destination');
+  ig = await run('/app','Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Safari/604.1'); assert.equal(new URL(ig.headers.Location).hostname,'apps.apple.com','non-Instagram bare link unchanged');
   fail = true; assert.equal((await run('/app?platform=ios')).statusCode,302,'analytics failure cannot block installation');
   console.log('PASS: store selection, fixed destinations, attribution, referrer privacy, bot/HEAD filtering, analytics outage');
 })().catch(e=>{console.error(e);process.exitCode=1;});
