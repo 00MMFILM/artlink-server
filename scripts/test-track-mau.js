@@ -3,6 +3,8 @@
 // - (a) body 없는 POST에서 500/throw가 나지 않는가 (구버전은 req.body 구조분해에서 TypeError)
 // - (b) 월 키가 KST 기준인가 (UTC면 매월 1일 00~09시 KST가 전월로 집계됨)
 // - (c) upsert 실패를 삼키지 않고 로깅하는가
+// - (d) last_seen은 클라이언트 timestamp가 아닌 서버 시각
+// - (e) 예외(catch) 경로도 success:false + 로그
 process.env.SUPABASE_URL = "http://127.0.0.1:9/mock";
 process.env.SUPABASE_SERVICE_KEY = "test-key";
 
@@ -73,6 +75,26 @@ await handler({ method: "POST", headers: {}, body: { deviceId: "dev-2" } }, res)
 console.error = realErr;
 check("(c) upsert 실패를 console.error로 남김", errs.some((e) => e.includes("[track-mau]")), errs.join("|"));
 check("(c) 실패 시 success:false", res.body && res.body.success === false, JSON.stringify(res.body));
+
+// (d) 클라이언트가 미래 timestamp를 보내도 서버 시각 저장
+nextDbStatus = 200;
+const before = Date.now();
+res = mockRes();
+await handler({ method: "POST", headers: {}, body: { deviceId: "dev-3", timestamp: "2026-10-17T00:00:00.000Z" } }, res);
+const seen = Date.parse(upsertBody.last_seen);
+check("(d) last_seen = 서버 시각(클라이언트 미래값 무시)", seen >= before && seen <= Date.now(), `last_seen=${upsertBody.last_seen}`);
+
+// (e) fetch 자체가 throw → catch 경로
+const realFetch = globalThis.fetch;
+globalThis.fetch = async () => { throw new Error("network down"); };
+const errs2 = [];
+console.error = (...a) => errs2.push(a.join(" "));
+res = mockRes();
+await handler({ method: "POST", headers: {}, body: { deviceId: "dev-4" } }, res);
+console.error = realErr;
+globalThis.fetch = realFetch;
+check("(e) 예외 시 200 + success:false", res.code === 200 && res.body && res.body.success === false, JSON.stringify(res.body));
+check("(e) 예외를 console.error로 남김", errs2.some((e) => e.includes("[track-mau]")), errs2.join("|"));
 
 console.log(failed === 0 ? "\nALL PASS" : `\n${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);
