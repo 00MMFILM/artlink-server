@@ -9,9 +9,16 @@ const subscribers = new Map();
 let writes = [];
 let reads = [];
 let rcStatus = 200;
+let alerts = [];
+let alertDown = false;
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 globalThis.fetch = async (url, init = {}) => {
   const u = new URL(String(url));
+  if (u.hostname === "api.telegram.org") {
+    if (alertDown) throw new Error("telegram down");
+    alerts.push({ path: u.pathname, ...JSON.parse(init.body) });
+    return json({ ok: true });
+  }
   if (u.hostname === "api.revenuecat.com") {
     const id = decodeURIComponent(u.pathname.split("/").pop());
     reads.push(id);
@@ -41,7 +48,11 @@ async function call(event) {
   await handler({ method: "POST", headers: { authorization: "test-webhook" }, body: { event } }, res);
   return res;
 }
-function reset() { rows.clear(); subscribers.clear(); writes = []; reads = []; rcStatus = 200; }
+function reset() {
+  rows.clear(); subscribers.clear(); writes = []; reads = []; rcStatus = 200; alerts = []; alertDown = false;
+  delete process.env.TELEGRAM_BOT_TOKEN; delete process.env.TELEGRAM_CHAT_ID;
+}
+function alertOn() { process.env.TELEGRAM_BOT_TOKEN = "tg-token"; process.env.TELEGRAM_CHAT_ID = "42"; }
 let failed = 0;
 async function test(name, run) {
   reset();
@@ -132,6 +143,53 @@ await test("TRANSFER missing key must not silently acknowledge", async () => {
     const res = await call({ type: "TRANSFER", transferred_from: ["old"], transferred_to: ["new"] });
     assert.equal(res.code, 503); assert.equal(writes.length, 0); assert.equal(reads.length, 0);
   } finally { process.env.REVENUECAT_SECRET_KEY = original; }
+});
+const purchase = { type: "INITIAL_PURCHASE", app_user_id: "payer", environment: "PRODUCTION", product_id: "artlink_premium_monthly",
+  price_in_purchased_currency: 6900, currency: "KRW", store: "APP_STORE", country_code: "KR" };
+await test("production purchase sends one payment alert without the user id", async () => {
+  alertOn(); subscribers.set("payer", active());
+  const res = await call(purchase);
+  assert.equal(res.code, 200); assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].path, "/bottg-token/sendMessage"); assert.equal(alerts[0].chat_id, "42");
+  assert.equal(alerts[0].text, "아트링크 신규 결제\n상품: artlink_premium_monthly\n금액: 6,900 KRW\n스토어: APP_STORE · KR");
+  assert.ok(!alerts[0].text.includes("payer"));
+});
+await test("alert is off without telegram settings", async () => {
+  subscribers.set("payer", active());
+  const res = await call(purchase);
+  assert.equal(res.code, 200); assert.equal(alerts.length, 0);
+});
+await test("sandbox purchase never alerts", async () => {
+  alertOn();
+  await call({ ...purchase, environment: "SANDBOX" });
+  assert.equal(alerts.length, 0);
+});
+await test("telegram outage cannot fail the webhook or the entitlement write", async () => {
+  alertOn(); alertDown = true; subscribers.set("payer", active());
+  const res = await call(purchase);
+  assert.equal(res.code, 200); assert.equal(rows.get("payer").active, true);
+});
+await test("failed reconcile does not alert, so the retry alerts once", async () => {
+  alertOn(); rcStatus = 503;
+  const res = await call(purchase);
+  assert.ok(res.code >= 500); assert.equal(alerts.length, 0);
+});
+await test("anonymous production purchase still alerts", async () => {
+  alertOn();
+  const res = await call({ ...purchase, app_user_id: "$RCAnonymousID:a" });
+  assert.equal(res.code, 200); assert.equal(alerts.length, 1); assert.equal(writes.length, 0);
+});
+await test("cancellation alerts with its reason and no entitlement change", async () => {
+  alertOn(); rows.set("payer", { kind: "sub", active: true });
+  await call({ type: "CANCELLATION", app_user_id: "payer", environment: "PRODUCTION", product_id: "artlink_premium_monthly", cancel_reason: "UNSUBSCRIBE", store: "PLAY_STORE" });
+  assert.equal(alerts[0].text, "아트링크 자동갱신 해지\n상품: artlink_premium_monthly\n스토어: PLAY_STORE\n사유: UNSUBSCRIBE");
+  assert.equal(writes.length, 0);
+});
+await test("transfer and unknown events do not alert", async () => {
+  alertOn(); subscribers.set("old", { entitlements: {} }); subscribers.set("new", active());
+  await call({ type: "TRANSFER", transferred_from: ["old"], transferred_to: ["new"] });
+  await call({ type: "SUBSCRIBER_ALIAS", app_user_id: "payer", environment: "PRODUCTION" });
+  assert.equal(alerts.length, 0);
 });
 console.log(failed ? `${failed} FAILED` : "ALL PASS");
 process.exitCode = failed ? 1 : 0;

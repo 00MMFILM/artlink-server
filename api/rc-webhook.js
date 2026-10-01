@@ -31,6 +31,40 @@ async function reconcilePremium(ids, type, secret) {
   }
 }
 
+// 결제 이벤트를 운영자 텔레그램으로 알린다. 알림 실패가 권한 반영(웹훅 응답)을 막으면 안 된다.
+const ALERT_LABEL = {
+  INITIAL_PURCHASE: "신규 결제", RENEWAL: "구독 갱신", NON_RENEWING_PURCHASE: "단건 결제",
+  UNCANCELLATION: "해지 철회", PRODUCT_CHANGE: "상품 변경", CANCELLATION: "자동갱신 해지",
+  EXPIRATION: "구독 만료", BILLING_ISSUE: "결제 실패",
+};
+
+async function notifyPayment(event) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const label = ALERT_LABEL[event.type];
+  if (!token || !chatId || !label) return;
+  const price = event.price_in_purchased_currency;
+  const reason = event.cancel_reason || event.expiration_reason;
+  const text = [
+    `아트링크 ${label}${event.period_type === "TRIAL" ? " (무료체험)" : ""}`,
+    `상품: ${event.product_id || "-"}`,
+    Number.isFinite(price) && price !== 0 && `금액: ${price.toLocaleString("ko-KR")} ${event.currency || ""}`.trim(),
+    `스토어: ${[event.store, event.country_code].filter(Boolean).join(" · ") || "-"}`,
+    reason && `사유: ${reason}`,
+  ].filter(Boolean).join("\n");
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text }),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!r.ok) console.error("[rc-webhook] alert failed:", r.status);
+  } catch (e) {
+    console.error("[rc-webhook] alert failed:", e.name); // 주소에 토큰이 있어 메시지는 남기지 않는다
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -67,6 +101,7 @@ export default async function handler(req, res) {
     // 익명 ID($RCAnonymousID:...)는 Supabase 유저와 매칭 불가 — 로그인 유도 후 재시도됨
     if (typeof userId !== "string" || !userId || userId.startsWith("$RCAnonymousID")) {
       console.log("[rc-webhook] skip anonymous:", type);
+      await notifyPayment(event); // 로그인 전 결제도 매출이다
       return res.status(200).json({ skipped: "anonymous" });
     }
 
@@ -79,6 +114,7 @@ export default async function handler(req, res) {
       console.log("[rc-webhook] ignored event:", type);
     }
 
+    await notifyPayment(event);
     return res.status(200).json({ ok: true });
   } catch (e) {
     console.error("[rc-webhook] Error:", e.message);
