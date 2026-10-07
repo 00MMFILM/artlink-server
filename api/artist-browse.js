@@ -4,6 +4,7 @@
 // 해당 필터만 빼고 기존 동작으로 재조회한다 (migrations/2026-09-23-profile-visibility.sql).
 import { supabase, checkAppToken, stripSensitive, cors } from "./_profileLib.js";
 import { isMissingColumnError } from "./profile-sync.js";
+import { normalizeBirthDate, ageFromBirthDate } from "./_birthDate.js";
 
 // 비공개 제외 필터를 뺀 것 외에는 동일한 조회. 컬럼 부재 폴백을 위해 매번 새로 조립한다.
 export function buildBrowseQuery(client, f, { excludePrivate }) {
@@ -93,6 +94,8 @@ export default async function handler(req, res) {
     // 마일리지·레벨 기본값 보정(마이그레이션 전 컬럼 미존재 시에도 형태 일관) 후 민감정보 제거
     const withMileage = deduped.map((r) => ({
       ...r,
+      // 구버전 앱(≤1.11.9)은 YYYY-MM-DD가 아니면 나이를 못 그린다 — 읽을 수 있는 값은 맞춰서 내려준다
+      birth_date: normalizeBirthDate(r.birth_date) || r.birth_date,
       mileage: r.mileage ?? 0,
       level: r.level ?? 1,
     }));
@@ -103,14 +106,4 @@ export default async function handler(req, res) {
   }
 }
 
-function calcAge(birthDate) {
-  if (!birthDate) return null;
-  const parts = String(birthDate).split("-");
-  if (parts.length < 3) return null;
-  const birth = new Date(parts[0], parts[1] - 1, parts[2]);
-  const now = new Date();
-  let age = now.getFullYear() - birth.getFullYear();
-  const m = now.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
-  return age > 0 ? age : null;
-}
+const calcAge = ageFromBirthDate;
