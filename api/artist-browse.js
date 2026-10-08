@@ -47,17 +47,20 @@ export default async function handler(req, res) {
     }
     if (error) throw error;
 
-    // ① 가입(로그인) 계정만 노출: auth_user_id 있는 users의 프로필만.
+    // ① 가입(로그인) 계정, 또는 본인이 직접 「프로필 공개」를 켠 게스트만 노출.
+    //    1.11.1부터 가입 없이 쓰는 게 기본이라 게스트가 공개를 켜고 사진·신체 정보까지 채워도
+    //    대시보드에 안 나왔다(2026-10-07 제보). 스위치를 건드리지 않은 게스트(visibility_updated_at 없음)는 종전대로 제외.
     const { data: authUsers } = await supabase
       .from("users")
       .select("id")
       .not("auth_user_id", "is", null)
       .limit(5000);
     const signedUp = new Set((authUsers || []).map((u) => u.id));
+    const optedIn = (r) => r.profile_public === true && !!r.visibility_updated_at;
 
     // ② 품질 필터: 빈 껍데기(이메일·활동·사진 모두 없음) 제외.
     const quality = (data || []).filter((r) => {
-      if (!signedUp.has(r.user_id)) return false; // 미가입 게스트 제외
+      if (!signedUp.has(r.user_id) && !optedIn(r)) return false; // 공개를 켜지 않은 게스트 제외
       const hasEmail = !!(r.email && String(r.email).includes("@"));
       const hasActivity = (r.notes_count || 0) > 0;
       const hasPhotos = Array.isArray(r.photos) && r.photos.length > 0;
