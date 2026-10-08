@@ -5,6 +5,31 @@
 import { supabase, checkAppToken, stripSensitive, cors } from "./_profileLib.js";
 import { isMissingColumnError } from "./profile-sync.js";
 import { normalizeBirthDate, ageFromBirthDate } from "./_birthDate.js";
+import { identifyUser } from "./_usage.js";
+
+// 열람 기록 — 기업 쪽 수요를 재기 위해(2026-10-08: 공개 38명, 제안은 3월 이후 0건, 열람은 측정조차 없었다).
+// 누가(계정/기기), 어떤 필터로, 몇 명이 나왔는지만. 검색어 원문은 저장하지 않는다. 실패해도 응답을 막지 않는다.
+const FILTER_KEYS = ["gender", "heightMin", "heightMax", "ageMin", "ageMax", "field", "specialties", "location"];
+export async function logDashboardView(req, f, resultCount) {
+  try {
+    const user = await identifyUser(req);
+    const deviceId = typeof req.headers["x-device-id"] === "string" ? req.headers["x-device-id"].slice(0, 80) : null;
+    const filters = {};
+    for (const k of FILTER_KEYS) if (f[k] !== undefined && f[k] !== null && f[k] !== "") filters[k] = f[k];
+    if (f.search) filters.search = true;
+    const { error } = await supabase.from("dashboard_views").insert({
+      viewer_kind: user ? "account" : deviceId ? "device" : "unknown",
+      viewer_id: user ? user.id : deviceId,
+      filters,
+      result_count: resultCount,
+      app_version: typeof f.appVersion === "string" ? f.appVersion.slice(0, 32) : null,
+      platform: typeof f.platform === "string" ? f.platform.slice(0, 16) : null,
+    });
+    if (error) console.error("[artist-browse] view log failed:", error.message);
+  } catch (e) {
+    console.error("[artist-browse] view log failed:", e.message);
+  }
+}
 
 // 비공개 제외 필터를 뺀 것 외에는 동일한 조회. 컬럼 부재 폴백을 위해 매번 새로 조립한다.
 export function buildBrowseQuery(client, f, { excludePrivate }) {
@@ -102,6 +127,7 @@ export default async function handler(req, res) {
       mileage: r.mileage ?? 0,
       level: r.level ?? 1,
     }));
+    await logDashboardView(req, f, withMileage.length);
     return res.status(200).json({ profiles: withMileage.map(stripSensitive) });
   } catch (e) {
     console.error("[artist-browse]", e.message);

@@ -11,10 +11,15 @@ const rows = [
   { user_id: "guest-untouched", name: "Guest", notes_count: 2, photos: ["p.jpg"], profile_public: true, visibility_updated_at: null, height_private: false, weight_private: false },
 ];
 const GUESTS = new Set(["guest-opted-in", "guest-untouched"]);
-let browseUrl;
-globalThis.fetch = async (url) => {
+let browseUrl; const viewLogs = []; let viewLogFail = false;
+globalThis.fetch = async (url, init = {}) => {
   const u = new URL(url);
   let data;
+  if (u.pathname.endsWith("/dashboard_views")) {
+    if (viewLogFail) return new Response(JSON.stringify({ message: "down" }), { status: 500, headers: { "Content-Type": "application/json" } });
+    viewLogs.push(JSON.parse(init.body)); return new Response("[]", { status: 201, headers: { "Content-Type": "application/json" } });
+  }
+  if (u.pathname.endsWith("/auth/v1/user")) return new Response(JSON.stringify({ id: "acct-1" }), { headers: { "Content-Type": "application/json" } });
   if (u.pathname.endsWith("/users")) data = rows.filter((r) => !GUESTS.has(r.user_id)).map((r) => ({ id: r.user_id }));
   else if (u.pathname.endsWith("/artist_profiles")) {
     browseUrl = u;
@@ -23,9 +28,9 @@ globalThis.fetch = async (url) => {
   return new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json" } });
 };
 const { default: browse } = await import("../api/artist-browse.js");
-const run = async (body) => {
+const run = async (body, headers = {}) => {
   const res = { setHeader() {}, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } };
-  await browse({ method: "POST", headers: {}, body }, res);
+  await browse({ method: "POST", headers, body }, res);
   assert.equal(res.code, 200);
   return res.body.profiles;
 };
@@ -43,3 +48,17 @@ for (const filters of [{ heightMin: 170 }, { heightMax: 180 }, { heightMin: 170,
   assert.deepEqual(filtered.map((r) => r.user_id).filter((id) => !GUESTS.has(id)), ["public"]);
 }
 console.log("PASS minimum, maximum and combined height filters exclude private values");
+
+// 2026-10-08 열람 기록: 호출마다 1행, 기기/계정 식별, 검색어 원문 미저장, 기록 실패해도 200
+viewLogs.length = 0;
+await run({ gender: "male", search: "비밀 이름", appVersion: "1.11.10", platform: "ios" }, { "x-device-id": "device_abc" });
+assert.equal(viewLogs.length, 1);
+assert.equal(viewLogs[0].viewer_kind, "device"); assert.equal(viewLogs[0].viewer_id, "device_abc");
+assert.deepEqual(viewLogs[0].filters, { gender: "male", search: true });
+assert.equal(viewLogs[0].app_version, "1.11.10"); assert.equal(typeof viewLogs[0].result_count, "number");
+await run({}, { authorization: "Bearer tok" });
+assert.equal(viewLogs[1].viewer_kind, "account"); assert.equal(viewLogs[1].viewer_id, "acct-1");
+await run({});
+assert.equal(viewLogs[2].viewer_kind, "unknown");
+viewLogFail = true; const okEvenIfLogDown = await run({}); assert.ok(Array.isArray(okEvenIfLogDown)); viewLogFail = false;
+console.log("PASS dashboard view logged per call (device/account/unknown), search text not stored, log outage does not block");
