@@ -2,4 +2,16 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url><loc>https://art-link.kr/launch/</loc><xhtml:link rel="alternate" hreflang="ko" href="https://art-link.kr/launch/"/><xhtml:link rel="alternate" hreflang="en" href="https://art-link.kr/launch/en/"/></url>
   <url><loc>https://art-link.kr/launch/en/</loc><xhtml:link rel="alternate" hreflang="ko" href="https://art-link.kr/launch/"/><xhtml:link rel="alternate" hreflang="en" href="https://art-link.kr/launch/en/"/></url>
+  <url><loc>https://art-link.kr/launch/acting/</loc></url>
+  <url><loc>https://art-link.kr/launch/en/acting/</loc></url>
+  <url><loc>https://art-link.kr/launch/music/</loc></url>
+  <url><loc>https://art-link.kr/launch/en/music/</loc></url>
+  <url><loc>https://art-link.kr/launch/art/</loc></url>
+  <url><loc>https://art-link.kr/launch/en/art/</loc></url>
+  <url><loc>https://art-link.kr/launch/dance/</loc></url>
+  <url><loc>https://art-link.kr/launch/en/dance/</loc></url>
+  <url><loc>https://art-link.kr/launch/literature/</loc></url>
+  <url><loc>https://art-link.kr/launch/en/literature/</loc></url>
+  <url><loc>https://art-link.kr/launch/film/</loc></url>
+  <url><loc>https://art-link.kr/launch/en/film/</loc></url>
 </urlset>

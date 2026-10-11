@@ -1,0 +1,48 @@
+import { createRequire } from 'node:module';
+const { PGlite } = createRequire(import.meta.url)(process.env.PGLITE_TEST_MODULE || '@electric-sql/pglite');
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const db = new PGlite();
+const ids = ['00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000003'];
+await db.exec(`create role authenticated; create role anon; create schema auth; create table auth.users(id uuid primary key); create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb $$; create function auth.uid() returns uuid language sql stable as $$ select (auth.jwt()->>'sub')::uuid $$; grant usage on schema public,auth to authenticated,anon;`);
+for(const id of ids) await db.query('insert into auth.users values($1)',[id]);
+await db.exec(fs.readFileSync(new URL('../migrations/2026-10-11-private-groups.sql', import.meta.url),'utf8'));
+let checks=0;
+async function as(id,anonymous=false){await db.exec('reset role');await db.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({sub:id,is_anonymous:anonymous})]);await db.exec('set role authenticated');}
+async function call(action,group=null,payload={}){return (await db.query('select public.artlink_group_action($1,$2,$3) as result',[action,group,JSON.stringify(payload)])).rows[0].result;}
+async function denied(fn,pattern){await assert.rejects(fn,pattern);checks++;}
+await as(ids[0]);
+const a=await call('create',null,{name:'Test Academy',kind:'academy',displayName:'Owner'});checks++;
+const invite=await call('invite',a.id);assert.equal(invite.code.length,32);checks++;
+await as(ids[1]);
+await denied(()=>call('read',a.id),/GROUP_ACCESS_DENIED/);
+await denied(()=>call('join',null,{code:'0'.repeat(32),displayName:'Member'}),/GROUP_INVITE_INVALID/);
+await call('join',null,{code:invite.code,displayName:'Member'});checks++;
+assert.equal((await call('read',a.id)).role,'member');checks++;
+await denied(()=>call('invite',a.id),/GROUP_OWNER_REQUIRED/);
+await denied(()=>call('post',a.id,{kind:'notice',body:'x',title:'x',clientId:ids[2]}),/GROUP_OWNER_REQUIRED/);
+const message=await call('post',a.id,{kind:'message',body:'hello',clientId:ids[1],author_id:ids[0]});assert.equal(message.author_id,ids[1]);checks++;
+assert.equal((await call('post',a.id,{kind:'message',body:'hello',clientId:ids[1]})).id,message.id);checks++;
+assert.equal((await call('read',a.id)).messages.length,1);checks++;
+await denied(()=>db.query('select * from public.artlink_group_entries'),/permission denied/);
+await denied(()=>db.query("insert into public.artlink_group_members(group_id,user_id,display_name) values($1,$2,'hacker')",[a.id,ids[2]]),/permission denied/);
+await as(ids[2]);
+assert.deepEqual(await call('list'),[]);checks++;
+const b=await call('create',null,{name:'Test Theatre',kind:'theatre',displayName:'Other'});
+await denied(()=>call('read',a.id),/GROUP_ACCESS_DENIED/);
+await denied(()=>call('delete_entry',b.id,{entryId:message.id}),/GROUP_ACCESS_DENIED/);
+await as(ids[0]);
+await call('post',a.id,{kind:'notice',title:'Rehearsal',body:'at six',clientId:ids[0]});checks++;
+await denied(()=>call('leave',a.id),/GROUP_OWNER_CANNOT_LEAVE/);
+const rotated=await call('invite',a.id);assert.notEqual(rotated.code,invite.code);checks++;
+await as(ids[2]);
+await denied(()=>call('join',null,{code:invite.code,displayName:'Other'}),/GROUP_INVITE_INVALID/);
+await as(ids[0]);await call('remove_member',a.id,{userId:ids[1]});checks++;
+await as(ids[1]);await denied(()=>call('read',a.id),/GROUP_ACCESS_DENIED/);
+await denied(()=>call('post',a.id,{kind:'message',body:'no',clientId:ids[2]}),/GROUP_ACCESS_DENIED/);
+await denied(()=>call('join',null,{code:rotated.code,displayName:'Member'}),/GROUP_ACCESS_DENIED/);
+await as(ids[0],true);await denied(()=>call('list'),/GROUP_LOGIN_REQUIRED/);
+await db.exec('reset role; set role anon');await denied(()=>call('list'),/permission denied/);
+await db.exec('reset role');await db.query("update public.artlink_group_invites set expires_at=now()-interval '1 second' where group_id=$1",[a.id]);
+await as(ids[2]);await denied(()=>call('join',null,{code:rotated.code,displayName:'Other'}),/GROUP_INVITE_INVALID/);
+await db.close();console.log(`PASS ${checks} PostgreSQL checks: membership isolation, role checks, invitation rotation/expiry, revoked membership, anonymous access, direct-table denial, idempotent sends.`);
