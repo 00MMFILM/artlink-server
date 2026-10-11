@@ -11,6 +11,8 @@ process.env.SUPABASE_SERVICE_KEY = "test-key";
 
 // guest_ai_usage 테이블의 device_id별 mock row. undefined면 "row 없음".
 let mockRows = {};
+// premium_devices(대표가 무제한으로 올린 게스트 기기) mock. 값이 있으면 active 행.
+let mockDevices = {};
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -22,6 +24,10 @@ function json(body, status = 200) {
 globalThis.fetch = async (url, init = {}) => {
   const u = new URL(url);
   const method = (init.method || "GET").toUpperCase();
+  if (u.pathname.includes("/premium_devices") && method === "GET") {
+    const deviceId = (u.searchParams.get("device_id") || "").replace(/^eq\./, "");
+    return json(mockDevices[deviceId] ? [mockDevices[deviceId]] : []);
+  }
   if (u.pathname.includes("/guest_ai_usage") && method === "GET") {
     const eq = u.searchParams.get("device_id") || ""; // "eq.<id>"
     const deviceId = eq.replace(/^eq\./, "");
@@ -77,6 +83,18 @@ const eHasFields = [a, b, c, d].every(
   (r) => "allowed" in r && "used" in r && "max" in r && r.max === 3
 );
 check("(e) 반환 객체에 allowed/used/max 필드 유지 (max=3)", eHasFields, JSON.stringify({ a, b, c, d }));
+
+// (f) 무제한 명단 기기 — 평생 3회를 다 썼고 오늘도 썼어도 통과, premium 표시
+mockRows = { "dev-f": { count: 9, updated_at: isoAtKstNoon(0) } };
+mockDevices = { "dev-f": { device_id: "dev-f" } };
+const f = await checkGuestQuota("dev-f");
+check("(f) 무제한 명단 기기 → 소진·당일 사용이어도 allowed:true, premium:true", f.allowed === true && f.premium === true, JSON.stringify(f));
+
+// (g) 명단에 없는 기기는 그대로 막힘 (명단이 다른 기기에 새지 않음)
+const g = await checkGuestQuota("dev-g-not-listed");
+mockRows = { "dev-g": { count: 3, updated_at: isoAtKstNoon(-1) } };
+const g2 = await checkGuestQuota("dev-g");
+check("(g) 명단 밖 기기는 종전 한도 그대로", g.allowed === true && !g.premium && g2.allowed === false && !g2.premium, JSON.stringify({ g, g2 }));
 
 console.log(failed === 0 ? "\nALL PASS" : `\n${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);

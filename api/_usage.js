@@ -253,6 +253,14 @@ export async function checkGuestQuota(deviceId) {
       .eq("device_id", deviceId)
       .maybeSingle();
     const used = data?.count || 0;
+    // 대표가 직접 무제한으로 올린 게스트 기기(premium_devices) — 가입 전이라 premium_members에 못 넣는 경우
+    const { data: comp } = await supabase
+      .from("premium_devices")
+      .select("device_id")
+      .eq("device_id", deviceId)
+      .eq("active", true)
+      .maybeSingle();
+    if (comp) return { allowed: true, used, max: GUEST_TRIAL_TOTAL, premium: true };
     // updated_at(마지막 사용 시각)의 KST 날짜가 오늘과 같으면 "오늘 이미 씀" → 하루 1회 게이트
     const usedToday = data?.updated_at
       ? kstDay(Date.parse(data.updated_at)) === kstDay()

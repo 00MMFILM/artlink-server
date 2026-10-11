@@ -263,6 +263,7 @@ export default async function handler(req, res) {
     guestId = identifyGuest(req);
     if (guestId) {
       const gq = await checkGuestQuota(guestId);
+      isPremium = !!gq.premium;
       if (!gq.allowed) {
         return res.status(429).json({
           error: "quota_exceeded",
