@@ -6,11 +6,15 @@
 // (c) kind:comp → kind:"comp", plan:null
 // (d) 미등재(row 없음) → active:false, kind:null, plan:null, since:null
 // (e) checkTextQuota/checkVideoQuota 반환 계약(allowed/used/max) 유지 — 기존 키 불변 확인
+// (f) 프리미엄 상한 도달(텍스트 10/일·영상 15/월) → no_cap 없으면 막힘
+// (g) no_cap:true(대표 지정 완전 무제한) → 같은 사용량에도 통과
 process.env.SUPABASE_URL = "http://127.0.0.1:9/mock";
 process.env.SUPABASE_SERVICE_KEY = "test-key";
 
 // premium_members 테이블의 user_id별 mock row. undefined면 "미등재".
 let mockPremiumRows = {};
+// ai_usage_daily 오늘·이번 달 사용량 mock (상한 시험용)
+let mockUsage = null;
 // ai_usage_daily / ai_video_usage는 이 테스트 범위 밖 — 빈 결과로 무해 처리.
 
 function json(body, status = 200) {
@@ -28,6 +32,7 @@ globalThis.fetch = async (url) => {
     const row = mockPremiumRows[userId];
     return json(row ? [row] : []); // maybeSingle: GET은 배열로 응답
   }
+  if (u.pathname.includes("/ai_usage_daily") && mockUsage) return json([mockUsage]);
   // ai_usage_daily, ai_video_usage 등: 이 테스트 범위 밖 — 빈 배열로 무해 처리
   return json([]);
 };
@@ -127,6 +132,23 @@ check(
   "allowed" in video && "used" in video && "max" in video,
   JSON.stringify(video)
 );
+
+// (f) 일반 프리미엄은 공정사용 상한에서 막힌다
+mockPremiumRows = { "user-f": { kind: "comp", active: true } };
+mockUsage = { text_count: 10, video_count: 15 };
+const ft = await checkTextQuota("user-f");
+const fv = await checkVideoQuota("user-f");
+check("(f) 프리미엄 텍스트 10회 → 막힘", ft.premium === true && ft.allowed === false, JSON.stringify(ft));
+check("(f) 프리미엄 영상 15회 → 막힘", fv.premium === true && fv.allowed === false, JSON.stringify(fv));
+
+// (g) no_cap 이면 상한 없이 통과
+mockPremiumRows = { "user-g": { kind: "comp", active: true, no_cap: true } };
+mockUsage = { text_count: 500, video_count: 500 };
+const gt = await checkTextQuota("user-g");
+const gv = await checkVideoQuota("user-g");
+check("(g) no_cap 텍스트 500회 → 통과", gt.premium === true && gt.allowed === true, JSON.stringify(gt));
+check("(g) no_cap 영상 500회 → 통과", gv.premium === true && gv.allowed === true, JSON.stringify(gv));
+mockUsage = null;
 
 console.log(failed === 0 ? "\nALL PASS" : `\n${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);
