@@ -10,7 +10,8 @@
     "pdf-parse": "^1.1.1"
   },
   "scripts": {
-    "test:groups": "node scripts/test-private-groups.mjs"
+    "test:groups": "node scripts/test-private-groups.mjs",
+    "test:assignments": "node scripts/test-group-assignments.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8"
