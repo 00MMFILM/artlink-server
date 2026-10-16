@@ -15,7 +15,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // 생성 메타 — 노트에 함께 저장되어 나중에 품질 비교·학습 데이터 필터의 기준이 된다
 import { paramChain, textOf, isRefusal } from "./_model.js";
-const PROMPT_VERSION = "2026-09-27.1";
+const PROMPT_VERSION = "2026-10-16.1";
 import { evidenceInstruction } from "./_analysisEvidence.js";
 import { feedbackLanguageInstruction } from "./_feedbackLanguage.js";
 
@@ -31,6 +31,11 @@ const SCORING_INSTRUCTION = `
 
 // 다음 연습에서 고칠 점 후보 — 앱이 칩으로 띄워 하나 고르게 한다. [[SCORES]] 바로 앞 줄.
 export const FOCUS_INSTRUCTION = `
+
+피드백을 시작할 때 다음 세 항목을 짧게 먼저 제시하세요. 한국어는 아래 제목을 쓰고, 영어는 What worked: / Evidence: / Next exercise:, 다른 언어는 해당 언어로 번역하세요.
+잘된 점: 제공된 자료에서 확인할 수 있는 장점 한 가지. 근거가 부족하면 확인하기 어렵다고 쓰고 칭찬을 만들지 마세요.
+근거: 그 판단에 사용한 실제 문장, 사진의 위치 또는 실제 관찰 가능한 장면. 제공되지 않은 타임스탬프·소리·행동을 지어내지 마세요. 전사만 받은 경우 발음·음정·억양·호흡을 관찰했다고 주장하지 마세요.
+다음 연습: 사용자가 한 번 더 시도할 수 있는 구체적인 행동 한 가지. 각 항목은 한 줄로 작성하고, 세 항목 뒤에 자세한 피드백을 이어가세요.
 
 다음 연습 초점 (필수):
 - 피드백 본문을 모두 마친 뒤, 아래 형식 그대로 정확히 한 줄만 출력하세요. 이 줄은 시스템이 자동 처리하며 사용자에게 보이지 않습니다.
@@ -443,11 +448,8 @@ export default async function handler(req, res) {
     // 프리필 제거 후 모델이 직접 📌로 시작 — 혹시 누락하면 보정 (앱 UI 일관성)
     let analysis = rawText.startsWith("📌") ? rawText : "📌 " + rawText;
 
-    // If truncated, append closing so it doesn't end abruptly
-    if (msg.stop_reason === "max_tokens") {
-      analysis += feedbackLanguage === "en"
-        ? "\n\n---\n(The response reached its length limit and is incomplete.)"
-        : "\n\n---\n(분석이 길어져 일부 생략되었습니다)";
+    if (!["end_turn", "stop_sequence"].includes(msg.stop_reason)) {
+      return res.status(502).json({ error: "Incomplete AI response", code: "ANALYSIS_INCOMPLETE" });
     }
 
     if (!analysis || analysis.trim().length < 10) {

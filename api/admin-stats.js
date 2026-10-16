@@ -4,6 +4,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { checkAppToken, rejectAppToken } from "./_usage.js";
 import { loadPracticeStats } from "./_practiceStats.js";
+import { loadFeedbackActivation } from "./_feedbackActivation.js";
 
 const supabase =
   process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
@@ -85,7 +86,10 @@ export default async function handler(req, res) {
     const totals = { iOS: 0, Android: 0, other: 0 };
     for (const d in first) totals[first[d].platform]++;
 
-    const practice = await getPracticeStats();
+    const [practice, feedbackActivation] = await Promise.all([
+      getPracticeStats(),
+      loadFeedbackActivation(supabase, { excludedDeviceIds: (process.env.ANALYTICS_EXCLUDED_DEVICE_IDS || '').split(',').map(id => id.trim()).filter(Boolean) }).catch(() => ({ available: false })),
+    ]);
 
     return res.status(200).json({
       totalDevices: Object.keys(first).length,
@@ -95,6 +99,7 @@ export default async function handler(req, res) {
       activeByMonth,
       rowsScanned: rows.length,
       practice,
+      feedbackActivation,
     });
   } catch (e) {
     console.error("[admin-stats]", e.message);

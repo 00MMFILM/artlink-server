@@ -22,7 +22,7 @@ export const config = { maxDuration: 300 };
 import { paramChain, textOf, isRefusal } from "./_model.js";
 // 초점·비교 규약은 ai-analyze.js와 한 곳에서 관리한다 (두 엔드포인트가 같은 숨김 줄 계약을 쓴다)
 import { FOCUS_INSTRUCTION, normalizeFocus, normalizePrevious, buildContextBlock } from "./ai-analyze.js";
-const PROMPT_VERSION = "2026-09-27.1";
+const PROMPT_VERSION = "2026-10-16.1";
 
 // ── Gemini 영상 관찰 경로 ──
 // 프레임 요약의 한계(움직임·소리 증발)를 보완: 영상을 통째로 Gemini가 시청·청취하고
@@ -399,10 +399,8 @@ export default async function handler(req, res) {
     // 프리필 제거 후 모델이 직접 📌로 시작 — 혹시 누락하면 보정 (앱 UI 일관성)
     let analysis = rawText.startsWith("📌") ? rawText : "📌 " + rawText;
 
-    if (msg.stop_reason === "max_tokens") {
-      analysis += feedbackLanguage === "en"
-        ? "\n\n---\n(The response reached its length limit and is incomplete.)"
-        : "\n\n---\n(분석이 길어져 일부 생략되었습니다)";
+    if (!["end_turn", "stop_sequence"].includes(msg.stop_reason)) {
+      return res.status(502).json({ error: "Incomplete AI response", code: "ANALYSIS_INCOMPLETE" });
     }
 
     if (!analysis || analysis.trim().length < 10) {

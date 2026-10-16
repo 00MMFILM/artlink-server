@@ -54,6 +54,23 @@ const base = new URLSearchParams({ source: 'actraw', mode: 'standard_speech', fi
     assert.doesNotMatch((await render(suffix)).body, /id="speech-handoff"/);
     count++;
   }
+  for (const language of ['ko', 'en']) {
+    for (const ua of [ios, android, 'desktop']) {
+      const { body } = await render('mode=quick_scene&field=acting&language='+language, ua);
+      const link = new URL(decode(body.match(/id="open-practice" href="([^"]+)"/)[1]));
+      assert.equal(link.searchParams.get('mode'), 'quick_scene');
+      assert.equal(link.searchParams.get('language'), language);
+      assert.equal(link.searchParams.get('field'), 'acting');
+      assert.ok(link.searchParams.get('content').length > 100, 'old app fallback keeps the original script');
+      let navigated = false;
+      const location = {}; Object.defineProperty(location, 'href', { set() { navigated = true; } });
+      runInNewContext(body.match(/<script>([\s\S]*?)<\/script>/)[1], { window:{location}, document:{getElementById:()=>({dataset:{mode:'quick_scene'}})}, setTimeout(){throw new Error('No forced store redirect');},encodeURIComponent });
+      assert.equal(navigated,false); count++;
+    }
+  }
+  for (const suffix of ['language=ja','language=en&language=ko','language=en&field=music','language=en&mode=evil']) {
+    assert.doesNotMatch((await render('mode=quick_scene&'+suffix)).body,/id="quick-handoff"/); count++;
+  }
   const hostile = new URLSearchParams(base);
   hostile.set('title', '"></a><script>alert(1)</script>');
   hostile.set('content', '<img src=x onerror=alert(1)>');

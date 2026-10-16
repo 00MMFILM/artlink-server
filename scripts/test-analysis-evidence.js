@@ -12,7 +12,7 @@ let observationFails = false;
 const Anthropic = (await import("@anthropic-ai/sdk")).default;
 Anthropic.Messages.prototype.create = async (params) => {
   calls.push(params);
-  return { model: params.model, content: [{ type: "text", text: "📌 합성 관찰입니다. 다음 연습에서 문장 하나를 비교하세요." }], usage: {} };
+  return { model: params.model, content: [{ type: "text", text: "📌 합성 관찰입니다. 다음 연습에서 문장 하나를 비교하세요." }], stop_reason: "end_turn", usage: {} };
 };
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), {
   status, headers: { "Content-Type": "application/json", ...headers },

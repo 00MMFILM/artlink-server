@@ -46,6 +46,9 @@ const VALID_EVENTS = new Set([
   "home_practice_tapped",
   "home_material_tapped",
   "home_feedback_tapped",
+  // First occurrence per device. These are not request totals or an error rate.
+  "feedback_requested",
+  "feedback_failed",
 ]);
 
 export default async function handler(req, res) {

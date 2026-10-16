@@ -45,7 +45,7 @@ const koreanScript = "오늘은 문 앞에서 상대의 답을 기다리는 장�
 const base = { field: "acting", wantScores: true, wantFocus: true, frames: ["ZmFrZQ=="] };
 let scenarios = 0;
 
-async function run(handler, body, query = {}) {
+async function run(handler, body, query = {}, expectedCode = 200) {
   calls = []; writes = [];
   const res = {
     code: 200, headers: {}, chunks: [], headersSent: false,
@@ -60,11 +60,12 @@ async function run(handler, body, query = {}) {
   try {
     await handler({ method: "POST", headers: { authorization: "Bearer offline-fixture" }, query, body: { ...base, ...body } }, res);
   } finally { console.log = log; console.error = error; console.warn = warn; }
-  assert.equal(res.code, 200, JSON.stringify(res.body));
+  assert.equal(res.code, expectedCode, JSON.stringify(res.body));
   assert.equal(calls.length, 1);
   const params = calls[0];
   assert.ok(params.system[0].text.includes("음성 전사는 말의 내용이지 소리 자체가 아닙니다"));
   assert.ok(params.system[0].text.includes("[[FOCUS]]"));
+  assert.ok(params.system[0].text.includes("What worked:"));
   if (handler === textHandler) assert.ok(params.system[0].text.includes("[[SCORES]]"));
   scenarios++;
   return { res, params, writes: [...writes] };
@@ -109,7 +110,7 @@ for (const [feedbackLanguage, prompt] of [["ko", englishScript], ["en", koreanSc
   assert.deepEqual(events.map((event) => event.type), ["delta", "done"]);
   assert.equal(events[0].text, resultText);
   assert.equal(events[1].model, params.model);
-  assert.equal(events[1].promptVersion, "2026-09-27.1");
+  assert.equal(events[1].promptVersion, "2026-10-16.1");
   assert.equal(usageWrites.filter((path) => path.endsWith("/ai_usage_daily")).length, 1);
 }
 const plain = await run(textHandler, { prompt: englishScript, feedbackLanguage: "ko" }, { stream: "1" });
@@ -117,11 +118,13 @@ assert.equal(plain.params.system.at(-1).text, feedbackLanguageInstruction("ko"))
 assert.equal(plain.res.headers["Content-Type"], "text/plain; charset=utf-8");
 assert.equal(plain.res.chunks.join(""), resultText);
 
-responseStopReason = "max_tokens";
-for (const handler of [textHandler, videoHandler]) {
-  const { res } = await run(handler, { prompt: koreanScript, feedbackLanguage: "en" });
-  assert.ok(res.body.analysis.endsWith("(The response reached its length limit and is incomplete.)"));
-  assert.ok(!res.body.analysis.includes("분석이 길어져"));
+for (const reason of ["max_tokens", "pause_turn"]) {
+  responseStopReason = reason;
+  for (const handler of [textHandler, videoHandler]) {
+    const { res, writes: usageWrites } = await run(handler, { prompt: koreanScript, feedbackLanguage: "en" }, {}, 502);
+    assert.equal(res.body.code, "ANALYSIS_INCOMPLETE");
+    assert.ok(!usageWrites.some(path => /ai_usage_daily|guest_ai_usage/.test(path)), "incomplete output must not consume allowance");
+  }
 }
 responseStopReason = "end_turn";
 

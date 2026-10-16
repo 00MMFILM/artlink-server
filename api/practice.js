@@ -63,12 +63,18 @@ module.exports = async (req, res) => {
   const monologueId = params.getAll("m").length === 1 ? params.get("m") : null;
   const sceneId = source === "actraw" && typeof monologueId === "string" && ACTRAW_ID_RE.test(monologueId)
     ? `actraw:${monologueId}` : "";
-  const mode = params.getAll("mode").length === 1 && params.get("mode") === "standard_speech"
+  let mode = params.getAll("mode").length === 1 && params.get("mode") === "standard_speech"
     && params.getAll("source").length === 1 && source === "actraw" && sceneId && field === "acting"
     ? "standard_speech" : "";
 
-  const title = truncate(params.get("title") || "", TITLE_MAX);
-  const content = truncate(params.get("content") || "", CONTENT_MAX);
+  const language = params.getAll("language").length === 1 && ["ko", "en"].includes(params.get("language")) ? params.get("language") : "";
+  if (params.getAll("mode").length === 1 && params.get("mode") === "quick_scene" && field === "acting" && language) mode = "quick_scene";
+  const title = truncate(params.get("title") || (mode === "quick_scene" ? (language === "ko" ? "가기 전에" : "Before You Go") : ""), TITLE_MAX);
+  // Older app versions still receive usable original dialogue in a normal note.
+  const quickContent = mode === "quick_scene" ? (language === "ko"
+    ? "ArtLink 원본 대사 — 친구가 떠나기 전에 조금 더 붙잡고 싶습니다.\n친구: 나 이제 가야겠다.\n나: 벌써? 차 아직 남았는데.\n친구: 내일 아침 일찍 일어나야 해.\n나: 알아. 잠깐이면 돼.\n친구: 할 말 있어?\n나: 그냥, 오늘은 조금만 더 있다 가."
+    : "ArtLink original — Your friend is leaving. You want them to stay.\nFriend: I should get going.\nYou: Already? You still have some tea.\nFriend: I have an early start tomorrow.\nYou: I know. Just a minute.\nFriend: Is there something you want to say?\nYou: Just stay a little longer. Please.") : "";
+  const content = truncate(params.get("content") || quickContent, CONTENT_MAX);
 
   const titleSafe = escapeHtml(title);
   const contentSafe = escapeHtml(content);
@@ -79,22 +85,23 @@ module.exports = async (req, res) => {
   const appParams = new URLSearchParams({ title, content, field, source });
   if (sceneId) appParams.set("sceneId", sceneId);
   if (mode) appParams.set("mode", mode);
+  if (mode === "quick_scene") appParams.set("language", language);
   const appLink = `artlink://practice?${appParams.toString()}`;
 
   res.statusCode = 200;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("Referrer-Policy", "no-referrer");
-  res.end(renderHtml({ titleSafe, contentSafe, titlePreview, field, source, sceneId, mode, appLink, storeUrl, tryDeepLink }));
+  res.end(renderHtml({ titleSafe, contentSafe, titlePreview, field, source, sceneId, mode, language, appLink, storeUrl, tryDeepLink }));
 };
 
-function renderHtml({ titleSafe, contentSafe, titlePreview, field, source, sceneId, mode, appLink, storeUrl, tryDeepLink }) {
+function renderHtml({ titleSafe, contentSafe, titlePreview, field, source, sceneId, mode, language, appLink, storeUrl, tryDeepLink }) {
   return `<!DOCTYPE html>
-<html lang="ko">
+<html lang="${mode === "quick_scene" && language === "en" ? "en" : "ko"}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>아트링크로 이어서 연습하기</title>
+<title>${mode === "quick_scene" && language === "en" ? "Start your first scene · ArtLink" : "아트링크로 이어서 연습하기"}</title>
 <meta name="robots" content="noindex">
 <style>
   :root {
@@ -196,10 +203,10 @@ function renderHtml({ titleSafe, contentSafe, titlePreview, field, source, scene
     <div class="logo-mark">A</div>
     ${
       titlePreview
-        ? `<div class="preview"><strong>${titlePreview}</strong>${contentSafe ? "대사를 아트링크로 불러옵니다" : ""}</div>`
+        ? `<div class="preview"><strong>${titlePreview}</strong>${contentSafe ? (mode === "quick_scene" && language === "en" ? "Your original scene is ready in ArtLink" : "대사를 아트링크로 불러옵니다") : ""}</div>`
         : ""
     }
-    ${mode ? `<div id="speech-handoff">
+    ${mode === "standard_speech" ? `<div id="speech-handoff">
       <h1>같은 대사로<br>표준어 연습을 이어가세요</h1>
       <p class="sub">아트링크에서 대사를 듣고, 새로 녹음하고, 연습 기록을 남길 수 있어요.</p>
       <a class="btn" id="open-practice" href="${escapeHtml(appLink)}">아트링크에서 이 대사 열기</a>
@@ -208,6 +215,13 @@ function renderHtml({ titleSafe, contentSafe, titlePreview, field, source, scene
       <a class="btn secondary" href="${PLAY}">Google Play에서 설치</a>
       <p class="hint">ACT RAW에서 녹음한 파일은 자동으로 옮겨지지 않습니다.<br>기기 음성은 참고용이며 자동 사투리·억양 채점은 제공하지 않습니다.<br>전용 연습 카드가 보이지 않으면 앱을 업데이트해 주세요.</p>
       <a class="back" href="https://actraw.kr/standard-speech">ACT RAW 표준어 연습으로 돌아가기</a>
+    </div>` : ""}
+    ${mode === "quick_scene" ? `<div id="quick-handoff">
+      <h1>${language === "en" ? "Six lines. Your first take." : "여섯 줄로 시작하는 첫 연습"}</h1>
+      <p class="sub">${language === "en" ? "Open the original scene, record your voice, then request feedback in your note." : "준비된 원본 장면을 열고 녹음한 뒤, 기록에서 피드백을 요청하세요."}</p>
+      <a class="btn" id="open-practice" href="${escapeHtml(appLink)}">${language === "en" ? "Open this scene in ArtLink" : "아트링크에서 이 장면 시작"}</a>
+      <p class="hint">${language === "en" ? "After installing or updating, return to this page and tap again. AI feedback uses your existing allowance. Transcripts do not measure pronunciation or intonation." : "설치·업데이트 후 이 페이지로 돌아와 위 버튼을 다시 눌러주세요. AI 피드백에는 기존 이용 한도가 적용됩니다. 전사만으로 발음·억양을 채점하지 않습니다."}</p>
+      <a class="btn secondary" href="${APPSTORE}">App Store</a><a class="btn secondary" href="${PLAY}">Google Play</a>
     </div>` : ""}
     <div id="redirecting" ${tryDeepLink && !mode ? "" : "hidden"}>
       <div class="spinner"></div>
@@ -238,7 +252,7 @@ function renderHtml({ titleSafe, contentSafe, titlePreview, field, source, scene
 
   var d = document.getElementById('practice-data').dataset;
   // This mode has a server-rendered explicit link; never force the user into a store.
-  if (d.mode === 'standard_speech') return;
+  if (d.mode === 'standard_speech' || d.mode === 'quick_scene') return;
   var qs = 'title=' + encodeURIComponent(d.title)
     + '&content=' + encodeURIComponent(d.content)
     + '&field=' + encodeURIComponent(d.field)
