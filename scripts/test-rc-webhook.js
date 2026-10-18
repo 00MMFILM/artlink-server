@@ -33,7 +33,8 @@ globalThis.fetch = async (url, init = {}) => {
   if (method === "POST") rows.set(patch.user_id, { ...rows.get(patch.user_id), ...patch });
   if (method === "PATCH") {
     const row = rows.get(id);
-    if (row && (!u.searchParams.has("kind") || u.searchParams.get("kind") === `eq.${row.kind}`)) rows.set(id, { ...row, ...patch });
+    const match = (k) => !u.searchParams.has(k) || u.searchParams.get(k) === `eq.${row[k] ?? (k === "no_cap" ? false : "")}`;
+    if (row && match("kind") && match("no_cap")) rows.set(id, { ...row, ...patch });
   }
   return json([]);
 };
@@ -89,6 +90,13 @@ await test("old expiration preserves manually assigned comp without a current pu
   rows.set("coach", { kind: "comp", active: true }); subscribers.set("coach", { entitlements: {} });
   const res = await call({ type: "EXPIRATION", app_user_id: "coach", environment: "PRODUCTION" });
   assert.equal(res.code, 200); assert.equal(rows.get("coach").active, true); assert.equal(rows.get("coach").kind, "comp");
+});
+await test("no_cap member stays active after renewal then expiration", async () => {
+  rows.set("vip", { kind: "comp", active: true, no_cap: true }); subscribers.set("vip", active());
+  await call({ type: "RENEWAL", app_user_id: "vip", environment: "PRODUCTION" });
+  subscribers.set("vip", { entitlements: {} });
+  await call({ type: "EXPIRATION", app_user_id: "vip", environment: "PRODUCTION" });
+  assert.equal(rows.get("vip").active, true); assert.equal(rows.get("vip").no_cap, true);
 });
 await test("production API failure preserves access and returns 5xx for retry", async () => {
   rows.set("payer", { kind: "sub", active: true }); rcStatus = 503;
