@@ -11,6 +11,7 @@ test('revision preserves Unicode and reconstructs both versions', () => {
   assert.equal(rows.filter(r=>r.kind!=='add').map(r=>r.text).join('\n'),before);
   assert.equal(rows.filter(r=>r.kind!=='remove').map(r=>r.text).join('\n'),after);
   assert.equal(C.diff('x\n'.repeat(500),'y\n'.repeat(500)).limited,true);
+  assert.equal(C.diff('x\n'.repeat(401),'y').limited,true);
 });
 test('image anchors stay relative and bounded', () => {
   assert.deepEqual(C.pin(100,50,200,100),{x:.5,y:.5});

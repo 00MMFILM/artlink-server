@@ -10,7 +10,7 @@
   function pin(x,y,w,h){if(![x,y,w,h].every(Number.isFinite)||w<=0||h<=0)return null;return {x:Math.max(0,Math.min(1,x/w)),y:Math.max(0,Math.min(1,y/h))};}
   function diff(before,after){
     const a=String(before).slice(0,20000).split('\n'),b=String(after).slice(0,20000).split('\n');
-    if(a.length*b.length>160000)return {limited:true,rows:[]};
+    if(a.length>400||b.length>400||a.length*b.length>160000)return {limited:true,rows:[]};
     const table=Array.from({length:a.length+1},()=>new Uint16Array(b.length+1));
     for(let i=a.length-1;i>=0;i--)for(let j=b.length-1;j>=0;j--)table[i][j]=a[i]===b[j]?table[i+1][j+1]+1:Math.max(table[i+1][j],table[i][j+1]);
     const rows=[];let i=0,j=0;
