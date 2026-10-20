@@ -3,6 +3,7 @@
 // - 영상 분석: 무료 평생 3회 체험
 // - premium_members(구독/베타 명단): 공정사용 상한 — 텍스트 10/일, 영상 15/월
 //   (완전 무제한은 남용 시 확정 적자 — 2026-08-06 가격정책 결정)
+//   단 no_cap=true 행(대표가 직접 지정한 개인)은 상한 없음 (2026-10-14)
 // - 게스트(비로그인) AI 체험: 평생 최대 3회, 단 하루(KST) 1회 — 최소 3일에 걸쳐
 //   돌아와야 3회를 다 쓰게 해 리텐션 유도 (2026-08-27 정책 변경)
 // - 사용자 식별: Authorization: Bearer <supabase access token>
@@ -56,14 +57,15 @@ function kstDay(ts = Date.now()) {
   return new Date(ts + 9 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
+// 활성 프리미엄 행({kind, no_cap}) 또는 null
 async function isUnlimited(userId) {
   const { data } = await supabase
     .from("premium_members")
-    .select("kind")
+    .select("kind, no_cap")
     .eq("user_id", userId)
     .eq("active", true)
     .maybeSingle();
-  return !!data;
+  return data || null;
 }
 
 // 앱 "프리미엄 이용 중" 표시용 구독 상태 조회. premium_members 1행을 그대로 반영.
@@ -101,7 +103,8 @@ export async function getPremiumInfo(userId) {
 export async function checkTextQuota(userId) {
   if (!supabase) return { allowed: true };
   try {
-    if (await isUnlimited(userId)) {
+    const pm = await isUnlimited(userId);
+    if (pm) {
       // 프리미엄 공정사용: 10/일 (일반 사용자는 절대 안 닿고 남용만 차단)
       const { data } = await supabase
         .from("ai_usage_daily")
@@ -110,7 +113,7 @@ export async function checkTextQuota(userId) {
         .eq("day", kstDay())
         .maybeSingle();
       const used = data?.text_count || 0;
-      return { allowed: used < PREMIUM_TEXT_DAILY, used, max: PREMIUM_TEXT_DAILY, premium: true };
+      return { allowed: !!pm.no_cap || used < PREMIUM_TEXT_DAILY, used, max: PREMIUM_TEXT_DAILY, premium: true };
     }
     const { data } = await supabase
       .from("ai_usage_daily")
@@ -161,7 +164,8 @@ export async function consumeText(userId, { strict = false } = {}) {
 export async function checkVideoQuota(userId) {
   if (!supabase) return { allowed: true };
   try {
-    if (await isUnlimited(userId)) {
+    const pm = await isUnlimited(userId);
+    if (pm) {
       // 월 합산 (KST 기준 이번 달) — video_count 컬럼 미적용 시 catch로 통과 (안전 저하)
       const monthStart = kstDay().slice(0, 8) + "01";
       const { data, error } = await supabase
@@ -171,7 +175,7 @@ export async function checkVideoQuota(userId) {
         .gte("day", monthStart);
       if (error) throw error;
       const used = (data || []).reduce((s, r) => s + (r.video_count || 0), 0);
-      return { allowed: used < PREMIUM_VIDEO_MONTHLY, used, max: PREMIUM_VIDEO_MONTHLY, premium: true };
+      return { allowed: !!pm.no_cap || used < PREMIUM_VIDEO_MONTHLY, used, max: PREMIUM_VIDEO_MONTHLY, premium: true };
     }
     const { data } = await supabase
       .from("ai_video_usage")

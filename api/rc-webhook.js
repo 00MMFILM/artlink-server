@@ -24,9 +24,10 @@ async function reconcilePremium(ids, type, secret) {
     const note = `rc:${type}:${state.productId || ""}:${new Date().toISOString()}`;
     // 확인된 실결제는 기존 정책대로 comp → sub로 승격한다.
     // 반대로 구매가 없을 때는 구독만 끈다. 별도로 지정한 comp를 오래된 만료 통지가 제거하면 안 된다.
+    // no_cap(대표 지정 완전 무제한)은 결제 이력과 무관하게 유지 — 만료로 끄지 않는다.
     const { error } = state.active
       ? await supabase.from("premium_members").upsert({ user_id: state.id, kind: "sub", active: true, note })
-      : await supabase.from("premium_members").update({ active: false, note }).eq("user_id", state.id).eq("kind", "sub");
+      : await supabase.from("premium_members").update({ active: false, note }).eq("user_id", state.id).eq("kind", "sub").eq("no_cap", false);
     if (error) throw error;
   }
 }
