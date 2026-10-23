@@ -17,10 +17,9 @@ $('heading').textContent=pick(conf.title);$('description').textContent=pick(conf
 $('language').textContent=ko?'English':'한국어';$('language').href=`?field=${field}&lang=${ko?'en':'ko'}`;
 for(const f of C.FIELDS){const a=document.createElement('a');a.textContent=pick(labels[f]);a.href=`?field=${f}&lang=${ko?'ko':'en'}`;if(f===field)a.setAttribute('aria-current','page');$('fields').append(a);}
 conf.roles.forEach((v,i)=>{const o=document.createElement('option');o.value=String(i);o.textContent=pick(v);$('role').append(o);});
-text('privacy','이 도구의 파일과 메모는 서버로 전송되지 않습니다. AI 평가 없이 직접 비교하며, 탭을 닫기 전 작업 기록을 내려받으세요.','Files and notes in this tool stay in your browser. Compare directly, without AI scoring. Download your review before closing this tab.');
+text('privacy','작품 파일은 이 브라우저에만 남습니다. 앱으로 이어받기를 선택하고 동의한 경우에만 미리보기의 글·메모·설정을 임시 전송합니다. AI 평가 없이 직접 비교하는 도구입니다.','Artwork files stay in this browser. Text, notes and settings are temporarily transferred only when you preview and agree to continue in the app. This is a self-review tool without AI scoring.');
 text('intent-label','이번 작업에서 바꾸려던 점','What did you intend to change?');$('intent').placeholder=say('예: 마지막 구간의 긴장감을 더 오래 유지하고 싶다.','For example: let the tension last longer in the final section.');text('comment-label','다음 작업에 남길 메모','A note for your next version');text('add-comment','메모 추가','Add note');text('export','작업 기록 내려받기','Download review');text('share','이 도구 링크 복사','Copy tool link');text('app','앱에서 기록 이어가기','Continue in the app');text('save-notice','다운로드에는 메모·설정이 포함됩니다. 원본 파일은 포함하지 않습니다. 링크 공유에도 내 작품·메모는 포함되지 않습니다.','The download contains notes and settings, not original media. Sharing the tool link never includes your work or notes.');text('closing-title','다음 버전까지 이어지는 기록.','A record that leads to your next version.');text('closing-copy','아트링크 앱에서 자료를 첨부하고 연습 기록과 AI 피드백을 이어갈 수 있어요. AI 피드백의 이용 한도와 구독 조건은 앱에서 확인하세요.','Attach your work in the ArtLink app to keep a practice record and request AI feedback. Check feedback allowances and subscription terms in the app.');text('learn','내 분야 더 알아보기 →','Explore my field →');$('learn').href=`/launch/${ko?'':'en/'}${field}/`;
-// Only a generic task crosses the web/app boundary. Personal notes never enter an HTTP query.
-$('app').href='/practice?'+new URLSearchParams({field,source:'web_studio',title:pick(conf.task),content:say('웹 작업실에서 비교한 자료를 첨부하고, 내려받은 작업 기록의 메모를 옮겨 적어 이어가세요.','Attach your compared material and paste the notes from your downloaded review to continue.')});
+$('app').removeAttribute('href');$('app').setAttribute('role','button');$('app').tabIndex=0;
 let dirty=false,anchor=null,comments=[],versions={a:0,b:0},urls={},files={},players={},playing=false,playToken=0,loopTimer=null,selected='a',activeTargets=[];
 const status=(a,b)=>text('status',a,b),changed=()=>{dirty=true;};
 $('intent').addEventListener('input',changed);$('comment').addEventListener('input',changed);$('role').addEventListener('change',changed);
@@ -90,5 +89,49 @@ function reviewText(){
 }
 $('export').onclick=()=>{const url=URL.createObjectURL(new Blob([reviewText()],{type:'text/plain;charset=utf-8'}));const a=element('a',{href:url,download:`artlink-${field}-review.txt`},document.body);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);dirty=false;status('작업 기록 다운로드를 시작했어요. 작성 중인 메모도 포함됩니다. 원본 파일은 따로 보관해주세요.','Review download started, including your draft note. Keep original media separately.');};
 $('share').onclick=async()=>{try{await navigator.clipboard.writeText(C.campaignLink(location.origin,field,ko?'ko':'en'));status('도구 링크를 복사했어요. 내 작품과 메모는 포함되지 않아요.','Tool link copied. Your work and notes are not included.');}catch{status('주소창의 링크를 복사해주세요. 내 작품과 메모는 주소에 포함되지 않아요.','Copy the URL from your address bar. It contains no work or notes.');}};
+
+function transferReview(){
+ const notes=comments.map(c=>({body:c.body,label:anchorLabel(c.anchor)+(c.anchor&&c.anchor.version!==versions[c.anchor.side]?say(' · 이전 자료',' · previous material'):''),resolved:c.resolved}));
+ if($('comment').value.trim())notes.push({body:$('comment').value.trim(),label:say('작성 중 · ','Draft · ')+anchorLabel(anchor),resolved:false});
+ const settings={};
+ if(players.a&&files.a){for(const key of ['start','end','offset','rate']){if($(key).value.trim()==='')throw Error('INVALID_REVIEW');settings[key]=Number($(key).value);}settings.loop=$('loop').checked;settings.mirrorA=!!$('mirror-a')?.checked;settings.mirrorB=!!$('mirror-b')?.checked;}
+ if($('count'))settings.count=Number($('count').value);
+ if($('gray'))settings.gray=$('gray').checked;
+ if(field==='acting')settings.checks=[0,1,2].map(i=>$('check-'+i).checked);
+ return window.ArtlinkTransfer.normalize({version:1,field,lang:ko?'ko':'en',title:pick(conf.task),role:pick(conf.roles[Number($('role').value)]),intent:$('intent').value,notes,settings,...(field==='literature'?{texts:{a:$('text-a').value,b:$('text-b').value}}:{})});
+}
+async function transferRequest(body){
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
+ try{const r=await fetch('/api/studio-transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:controller.signal});const data=await r.json();if(!r.ok)throw Error(data.error||'UNAVAILABLE');return data;}finally{clearTimeout(timer);}
+}
+$('app').onclick=e=>{
+ e?.preventDefault();stop();let snapshot;
+ try{snapshot=transferReview();}catch{status('먼저 메모나 비교할 글을 남겨주세요. 구간은 올바른 시작·끝으로 설정해주세요.','Add a note or text first, and check the start and end of your range.');return;}
+ const dialog=element('dialog',{'aria-labelledby':'handoff-title',class:'handoff'},document.body);
+ element('h2',{id:'handoff-title',text:say('앱으로 가져갈 기록','Your review for the app')},dialog);
+ element('p',{text:say('아래 내용만 전송합니다. 사진·영상·음원 원본과 파일명은 포함하지 않습니다.','Only the preview below is transferred. Media files and file names are excluded.')},dialog);
+ element('pre',{class:'transfer-preview',text:window.ArtlinkTransfer.describe(snapshot)},dialog);
+ const label=element('label',{class:'transfer-consent'},dialog),consent=element('input',{type:'checkbox'},label);
+ label.append(document.createTextNode(say('이 글·메모·설정을 암호화하여 임시 보관하고 앱으로 가져오는 데 동의합니다. 코드는 24시간 유효하며 만료 사본은 정기 삭제됩니다. 코드를 아는 사람은 기록을 가져올 수 있습니다.','I agree to temporarily store this text, notes and settings encrypted for import. The code expires in 24 hours; expired copies are periodically deleted. Anyone with the code can import the review.')));
+ const actions=element('div',{class:'actions'},dialog),submit=button(say('전송 코드 만들기','Create transfer code'),async()=>{
+  submit.disabled=true;close.disabled=true;message.textContent=say('기록을 준비하고 있어요…','Preparing your review…');
+  try{
+   const data=await transferRequest({action:'create',review:snapshot});if(!window.ArtlinkTransfer.code(data.code))throw Error('UNAVAILABLE');
+   const target=new URL('/studio/receive.html',location.origin);target.hash=new URLSearchParams({code:data.code,lang:ko?'ko':'en'}).toString();
+   consent.disabled=true;submit.hidden=true;message.textContent=say('코드를 만들었어요. 앱에서 내용을 확인하고 저장하세요. 웹의 원본 작업은 그대로 남아 있습니다.','Your code is ready. Preview and save in the app. Your original browser work remains here.');
+   element('p',{class:'transfer-code',text:data.code.match(/.{4}/g).join('-')},dialog);
+   const open=element('a',{class:'button primary',href:'artlink://studio-import?code='+data.code,text:say('앱에서 확인하고 저장','Preview and save in ArtLink')},actions);
+   const copy=button(say('다른 기기에서 열 링크 복사','Copy link for another device'),async()=>{try{await navigator.clipboard.writeText(target.href);message.textContent=say('전송 링크를 복사했어요. 본인 휴대폰에서 열어주세요.','Transfer link copied. Open it on your phone.');}catch{message.textContent=target.href;}},actions);
+   element('a',{class:'button',href:target.href,target:'_blank',rel:'noopener',text:say('설치·업데이트 후 이어받기','Install / update and return')},actions);
+   const revoke=button(say('전송 코드 취소','Revoke transfer code'),async()=>{revoke.disabled=true;try{await transferRequest({action:'revoke',code:data.code});open.remove();copy.remove();actions.querySelectorAll('a').forEach(a=>a.remove());message.textContent=say('코드를 취소했어요. 이미 앱에 저장한 기록은 앱에서 삭제할 수 있습니다.','Code revoked. Any already saved note can be deleted in the app.');}catch{revoke.disabled=false;message.textContent=say('취소하지 못했어요. 잠시 후 다시 눌러주세요.','Could not revoke. Try again shortly.');}},actions);
+  }catch(err){submit.disabled=!consent.checked;message.textContent=err.message==='TRY_AGAIN'?say('잠시 후 다시 시도해주세요. 기존 작업은 남아 있습니다.','Try again shortly. Your work is still here.'):say('전송하지 못했어요. 다시 시도하거나 작업 기록을 내려받아 보관해주세요.','Transfer failed. Retry or download your review to keep it.');}
+  finally{close.disabled=false;}
+ },actions);
+ submit.classList.add('primary');submit.disabled=true;consent.onchange=()=>{submit.disabled=!consent.checked;};
+ const close=button(say('작업실로 돌아가기','Back to my work'),()=>dialog.close(),actions),message=element('p',{role:'status','aria-live':'polite'},dialog);
+ dialog.addEventListener('close',()=>{$('app').focus();dialog.remove();});dialog.addEventListener('cancel',e=>{if(close.disabled)e.preventDefault();});dialog.showModal();
+};
+$('app').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('app').click();}};
+
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('pagehide',()=>{stop();Object.values(urls).forEach(URL.revokeObjectURL);});
 })();

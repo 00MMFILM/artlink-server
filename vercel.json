@@ -6,6 +6,9 @@
     },
     "api/ai-analyze.js": {
       "maxDuration": 120
+    },
+    "api/studio-transfer.js": {
+      "maxDuration": 60
     }
   },
   "redirects": [
@@ -44,6 +47,12 @@
           "value": "*"
         }
       ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/studio-transfer",
+      "schedule": "15 * * * *"
     }
   ]
 }
