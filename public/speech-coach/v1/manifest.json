@@ -1,0 +1,203 @@
+{
+  "version": 1,
+  "notice": "AI-generated practice voices. Not certified standard pronunciation or a dialect benchmark.",
+  "drills": [
+    {
+      "id": "closing",
+      "text": "오늘은 여기까지 이야기할게요.",
+      "version": "v1",
+      "kind": "ai-generated",
+      "model": "gpt-4o-mini-tts",
+      "voice": "marin",
+      "sha256": "8848ca5f0a1e0635dc4cca0a289a4ad4f2c3f36bb5770232dec821304049cfe6",
+      "duration": 2.66,
+      "url": "/speech-coach/v1/closing.mp3",
+      "transcript": {
+        "task": "transcribe",
+        "language": "korean",
+        "duration": 2.6600000858306885,
+        "text": "오늘은 여기까지 이야기할게요.",
+        "segments": [
+          {
+            "id": 0,
+            "seek": 0,
+            "start": 0,
+            "end": 2.2799999713897705,
+            "text": " 오늘은 여기까지 이야기할게요.",
+            "tokens": [
+              50364,
+              23720,
+              46869,
+              37576,
+              7999,
+              10142,
+              13,
+              50514
+            ],
+            "temperature": 0,
+            "avg_logprob": -0.5883248448371887,
+            "compression_ratio": 0.8235294222831726,
+            "no_speech_prob": 0.005770822521299124
+          }
+        ],
+        "words": [
+          {
+            "word": "오늘은",
+            "start": 0,
+            "end": 0.5199999809265137
+          },
+          {
+            "word": "여기까지",
+            "start": 0.5199999809265137,
+            "end": 1.340000033378601
+          },
+          {
+            "word": "이야기할게요",
+            "start": 1.340000033378601,
+            "end": 2.2799999713897705
+          }
+        ],
+        "usage": {
+          "type": "duration",
+          "seconds": 3
+        }
+      }
+    },
+    {
+      "id": "steady",
+      "text": "지금은 천천히 말해도 괜찮아요.",
+      "version": "v1",
+      "kind": "ai-generated",
+      "model": "gpt-4o-mini-tts",
+      "voice": "marin",
+      "sha256": "95e03f23263f27148f8861b56db154a4e976cc60830ea54fd3f424d91e667d8b",
+      "duration": 3.05,
+      "url": "/speech-coach/v1/steady.mp3",
+      "transcript": {
+        "task": "transcribe",
+        "language": "korean",
+        "duration": 3.0399999618530273,
+        "text": "지금은 천천히 말해도 괜찮아요.",
+        "segments": [
+          {
+            "id": 0,
+            "seek": 0,
+            "start": 0,
+            "end": 2.5399999618530273,
+            "text": " 지금은 천천히 말해도 괜찮아요.",
+            "tokens": [
+              50364,
+              46516,
+              31076,
+              18906,
+              5905,
+              7058,
+              49183,
+              18286,
+              5601,
+              13,
+              50504
+            ],
+            "temperature": 0,
+            "avg_logprob": -0.3885953426361084,
+            "compression_ratio": 0.7962962985038757,
+            "no_speech_prob": 0.0019238987006247044
+          }
+        ],
+        "words": [
+          {
+            "word": "지금은",
+            "start": 0,
+            "end": 0.6200000047683716
+          },
+          {
+            "word": "천천히",
+            "start": 0.6200000047683716,
+            "end": 1.3799999952316284
+          },
+          {
+            "word": "말해도",
+            "start": 1.3799999952316284,
+            "end": 1.7599999904632568
+          },
+          {
+            "word": "괜찮아요",
+            "start": 1.7599999904632568,
+            "end": 2.5399999618530273
+          }
+        ],
+        "usage": {
+          "type": "duration",
+          "seconds": 4
+        }
+      }
+    },
+    {
+      "id": "meeting",
+      "text": "내일 다시 만나서 이야기해요.",
+      "version": "v1",
+      "kind": "ai-generated",
+      "model": "gpt-4o-mini-tts",
+      "voice": "marin",
+      "sha256": "4157b3f503955e3808b210910d382ed17b91a90b9f1d436dce0eae04c29701e0",
+      "duration": 2.62,
+      "url": "/speech-coach/v1/meeting.mp3",
+      "transcript": {
+        "task": "transcribe",
+        "language": "korean",
+        "duration": 2.609999895095825,
+        "text": "내일 다시 만나서 이야기해요.",
+        "segments": [
+          {
+            "id": 0,
+            "seek": 0,
+            "start": 0,
+            "end": 2.240000009536743,
+            "text": " 내일 다시 만나서 이야기해요.",
+            "tokens": [
+              50364,
+              42831,
+              15463,
+              38841,
+              2393,
+              37576,
+              15788,
+              13,
+              50514
+            ],
+            "temperature": 0,
+            "avg_logprob": -0.4633789658546448,
+            "compression_ratio": 0.7843137383460999,
+            "no_speech_prob": 0.01992550492286682
+          }
+        ],
+        "words": [
+          {
+            "word": "내일",
+            "start": 0,
+            "end": 0.4399999976158142
+          },
+          {
+            "word": "다시",
+            "start": 0.4399999976158142,
+            "end": 0.8799999952316284
+          },
+          {
+            "word": "만나서",
+            "start": 0.8799999952316284,
+            "end": 1.6799999475479126
+          },
+          {
+            "word": "이야기해요",
+            "start": 1.6799999475479126,
+            "end": 2.240000009536743
+          }
+        ],
+        "usage": {
+          "type": "duration",
+          "seconds": 3
+        }
+      }
+    }
+  ]
+}

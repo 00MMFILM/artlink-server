@@ -15,6 +15,10 @@
     },
     "api/speech-check.js": {
       "maxDuration": 60
+    },
+    "api/speech-compare.js": {
+      "maxDuration": 60,
+      "includeFiles": "public/speech-coach/v1/**"
     }
   },
   "redirects": [
