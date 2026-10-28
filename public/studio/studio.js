@@ -135,3 +135,6 @@ $('app').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('ap
 
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('pagehide',()=>{stop();Object.values(urls).forEach(URL.revokeObjectURL);});
 })();
+
+// Preserve the chosen art form and language when entering a review room.
+(()=>{const a=document.getElementById('review-room');if(!a)return;const q=new URLSearchParams(location.search);a.href='/review/?'+new URLSearchParams({field:q.get('field')||'acting',lang:q.get('lang')||'ko'});})();

@@ -1,3 +1,4 @@
+import { deleteReviewAssets } from './_reviewCleanup.js';
 // 회원 탈퇴 — 인증된 본인 계정과 본인 소유 자료만 삭제한다.
 // 인증: checkAppToken(앱 토큰) + identifyUser(Bearer). 게스트·미인증은 401.
 // 계약: POST /api/account-delete
@@ -110,6 +111,8 @@ export default async function handler(req, res) {
   // 1) 학습 원본(media-archive) + media_assets — 철회 API와 같은 로직을 재사용한다.
   //    실패하면 예외를 던지므로 완료로 보고되지 않는다.
   await step("media_archive", async () => (await withdrawUserArchive(authId)).deleted);
+
+  await step("review_rooms", () => deleteReviewAssets(supabase, authId));
 
   // 2) 노트 원문 (user_notes.auth_user_id = auth uuid — api/_score.js 조회 기준과 동일)
   await step("user_notes", () => deleteOwned("user_notes", "auth_user_id", [authId], "auth_user_id"));

@@ -52,6 +52,16 @@
       <h3>2-2. 웹 작업실에서 앱으로 가져오기 / Web Studio Transfer</h3>
       <p>웹 작업실의 사진·영상·음원 파일은 자동 전송하지 않습니다. 이용자가 전송 미리보기를 확인하고 동의한 글·메모·비교 설정만 앱으로 가져오기 위해 암호화하여 임시 보관합니다. 코드는 24시간 동안 유효하며, 코드를 아는 사람은 해당 기록을 가져올 수 있습니다. 웹에서 코드를 취소할 수 있고, 만료된 임시 사본은 매시간 실행되는 정리 작업으로 삭제합니다. 서비스 요청 제한을 위해 IP 주소 자체 대신 매일 바뀌는 해시를 최대 약 25시간 보관합니다. 이 전송 사본은 AI 학습에 사용하지 않습니다. 앱에 저장한 기록은 앱의 삭제·동기화 설정을 따릅니다.</p>
       <p>Original image, video and audio files are not automatically transferred. Only the text, notes and comparison settings you preview and consent to are temporarily stored encrypted for import. Codes are valid for 24 hours; anyone with a code can import that review. You can revoke a code on the web. An hourly cleanup removes expired temporary copies. Request throttling uses a daily changing hash rather than the raw IP address, retained for up to approximately 25 hours. Transfer copies are not used for AI training. Notes saved in the app follow its deletion and sync controls.</p>
+      <h3>녹음 구간 점검 / Recording checks</h3>
+      <p>녹음 구간 점검을 선택하고 동의하면 선택한 짧은 녹음과 기준 대사를 서버로 전송합니다. 소리 크기·조용한 구간을 계산하며, 서버의 임시 음성 파일은 처리가 끝나면 삭제합니다. 발음 평가가 활성화된 경우 Microsoft Azure Speech에도 녹음과 대사를 전송합니다. 이 기능은 학습용 원본 보관에 자동 동의시키지 않습니다. 계정·요청 식별자·요청 시간·완료 여부는 이용 한도 관리에 사용하며, 지난 이용 이력은 다음 점검 요청 시 정리되고 회원 탈퇴 시 함께 삭제됩니다. 상세 분석 결과는 화면에만 있으며 사용자가 노트에 추가한 요약은 기존 노트 보관·동기화 정책을 따릅니다.</p>
+      <p>With your consent, recording checks send the selected short recording and reference line to the server to measure signal levels and quiet intervals. Temporary server audio is deleted after processing. When pronunciation assessment is enabled, the recording and line are also sent to Microsoft Azure Speech. This does not opt you into storage of training originals. Account/request identifiers, request time and completion status are used for usage limits; old usage records are cleaned on your next check and removed on account deletion. Detailed results stay in the screen; summaries you choose to add to a note follow existing note storage and sync controls.</p>
+
+
+      <h3>2-3. 작품 피드백룸 / Artwork Review Rooms</h3>
+      <p>이용자가 확인하고 저장한 작품 원본(사진·음원·영상·글), 버전별 피드백 질문·작품 설명·수정 기록, 표시 이름과 코멘트를 피드백 제공을 위해 보관합니다. 이 저장 동의는 AI 학습 활용 동의와 별개이며, 피드백룸 저장만으로 AI 분석이나 학습 활용을 실행하지 않습니다. 개인 작품은 처음에는 작성자만 볼 수 있고, 작성자가 초대 링크를 만들면 링크를 아는 사람이 작품과 코멘트를 볼 수 있습니다. 코멘트 작성에는 로그인이 필요합니다. 단체 과제 작품은 제출자와 현재 단체 운영자에게만 제공됩니다.</p>
+      <p>We store the original work (images, audio, video or writing), version-specific feedback questions, context and revision notes, display names and comments that you confirm and submit for review. This storage consent is separate from AI training consent. Saving a review does not trigger AI analysis or training. Personal rooms are private until the author creates an invitation; anyone holding that link can view the work and comments. Commenting requires an account. Group assignment work is restricted to the submitter and current group owner.</p>
+      <p>작성자는 초대를 종료하고 작품과 코멘트를 삭제할 수 있으며, 코멘트 작성자는 자신의 코멘트를 삭제할 수 있습니다. 계정 삭제 시 본인이 만든 피드백룸도 삭제합니다. 이미 발급된 미디어 재생 주소는 초대 종료 후 최대 60초간 유효할 수 있습니다. 삭제 당시 전송 중이던 파일은 만료된 업로드 권한을 이용한 재전송에 대비해 정리 대기 목록에 기록하며, 3시간 후부터 매시간 정리합니다. 다른 사람이 이미 내려받은 사본까지 회수할 수는 없습니다.</p>
+      <p>Authors can end invitations and delete their rooms and comments; commenters can delete their own comments. Account deletion also removes the account’s rooms. Previously issued playback URLs may remain valid for up to 60 seconds. Paths of deleted uploads are queued for an hourly cleanup starting after three hours, so a still-valid upload URL cannot leave a lasting orphan file. Copies already downloaded by recipients cannot be recalled.</p>
 
       <h3>3. 보관 기간 / Retention Period</h3>
       <p>계정 삭제 시까지. 이용자는 언제든지 프로필 > 계정 삭제를 통해 모든 개인정보를 삭제할 수 있습니다.</p>
@@ -66,8 +76,8 @@
       <p>This app may display ads through Google AdMob. AdMob may collect device identifiers for ad personalization.</p>
 
       <h3>6. 데이터 보안 / Data Security</h3>
-      <p>사용자 데이터는 Firebase Authentication 및 Firestore를 통해 안전하게 저장됩니다.</p>
-      <p>User data is securely stored through Firebase Authentication and Firestore.</p>
+      <p>작품 피드백룸은 Supabase 인증과 비공개 저장소를 사용하며, 서버에서 접근 권한을 확인한 뒤 짧은 유효기간의 미디어 주소를 발급합니다.</p>
+      <p>Review rooms use Supabase authentication and private storage. The server verifies access before issuing a short-lived media URL.</p>
 
       <h3>7. 이용자의 권리 / User Rights</h3>
       <ul>

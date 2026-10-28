@@ -9,6 +9,12 @@
     },
     "api/studio-transfer.js": {
       "maxDuration": 60
+    },
+    "api/review-room.js": {
+      "maxDuration": 60
+    },
+    "api/speech-check.js": {
+      "maxDuration": 60
     }
   },
   "redirects": [
@@ -53,6 +59,10 @@
     {
       "path": "/api/studio-transfer",
       "schedule": "15 * * * *"
+    },
+    {
+      "path": "/api/review-room",
+      "schedule": "25 * * * *"
     }
   ]
 }
