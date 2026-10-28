@@ -22,12 +22,23 @@ function audio(value) {
   if (bytes.length < 44 || bytes.length > MAX_BYTES) throw Error('INVALID_AUDIO');
   return bytes;
 }
+async function ready(env, client) {
+  if (!env.OPENAI_API_KEY || (!client && (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY))) return false;
+  try {
+    const db = client || createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+    // NULL identity/request must be rejected before any write. This distinguishes
+    // an installed, callable quota function from a missing migration/permission.
+    const query = db.rpc('artlink_speech_limit', { p_user: null, p_request: null, p_action: 'reserve' });
+    const result = await (query.abortSignal ? query.abortSignal(AbortSignal.timeout(4000)) : query);
+    return result.error?.message === 'LOGIN_REQUIRED';
+  } catch { return false; }
+}
 function makeHandler({ env = process.env, client, decoder = decode, transcription = transcribe, loadBuiltin = builtin, loadCatalog = catalog } = {}) {
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     const send = (code, body) => res.status(code).json(body);
     if (req.method === 'GET') {
-      try { return send(200, { version: 1, available: !!env.OPENAI_API_KEY, maxSeconds: 30, maxBytes: MAX_BYTES,
+      try { return send(200, { version: 1, available: await ready(env, client), maxSeconds: 30, maxBytes: MAX_BYTES,
         drills: (await loadCatalog()).drills.map(({ id, text, version, kind, sha256, duration, url }) => ({ id, text, version, kind, sha256, duration, url })) }); }
       catch { return send(503, { error: 'UNAVAILABLE' }); }
     }

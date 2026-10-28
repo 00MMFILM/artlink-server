@@ -12,6 +12,16 @@ await db.exec('set role anon');await assert.rejects(()=>call(1,'reserve'),/permi
 await db.exec('reset role;set role authenticated');await assert.rejects(()=>db.query('select * from public.artlink_speech_usage'),/permission denied/);checks++;
 await assert.rejects(()=>call(1,'reserve'),/permission denied/);checks++;
 await db.exec('reset role;set role service_role');
+// The public catalog readiness probe must neither reserve nor charge a check.
+const {makeHandler}=createRequire(import.meta.url)('../api/speech-compare');
+let catalog;
+const handler=makeHandler({env:{OPENAI_API_KEY:'test'},loadCatalog:async()=>({drills:[]}),client:{rpc:async(_,p)=>{
+ try{return {data:(await db.query('select public.artlink_speech_limit($1,$2,$3) result',[p.p_user,p.p_request,p.p_action])).rows[0].result};}
+ catch(e){return {error:{message:e.message}};}
+}}});
+await handler({method:'GET'},{setHeader(){},status(){return this;},json(body){catalog=body;}});
+assert.equal(catalog.available,true);checks++;
+assert.equal((await db.query('select count(*)::int n from public.artlink_speech_usage')).rows[0].n,0);checks++;
 assert.equal((await call(1,'reserve')).used,1);checks++;
 await assert.rejects(()=>call(1,'reserve'),/SPEECH_BUSY/);checks++;
 assert.equal((await call(1,'release')).used,0);checks++;

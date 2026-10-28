@@ -108,3 +108,17 @@ test('nonmatching spoken text returns no correction suggestions', async () => {
   const s = fixture({ transcription: () => ({ ...sample().transcript, text: '다른 문장입니다.' }) });
   const r = await s.call(); assert.equal(r.status, 200); assert.equal(r.result.status, 'text_uncertain'); assert.deepEqual(r.result.suggestions, []);
 });
+test('catalog advertises analysis only after a non-writing DB readiness probe', async () => {
+  for (const [message, available] of [['LOGIN_REQUIRED', true], ['Could not find the function', false], ['permission denied', false]]) {
+    let result, probed;
+    const handler = makeHandler({ env: { OPENAI_API_KEY: 'test' }, loadCatalog: async () => ({ drills: [] }),
+      client: { rpc: async (_, p) => { probed = p; return { error: { message } }; } } });
+    await handler({ method: 'GET' }, { setHeader() {}, status(s) { assert.equal(s, 200); return this; }, json(body) { result = body; } });
+    assert.equal(result.available, available); assert.equal(probed.p_user, null); assert.equal(probed.p_request, null);
+  }
+});
+test('catalog keeps reference listening available without provider or database configuration', async () => {
+  let result; const handler = makeHandler({ env: {}, loadCatalog: async () => ({ drills: [{ id: 'closing', text }] }) });
+  await handler({ method: 'GET' }, { setHeader() {}, status() { return this; }, json(body) { result = body; } });
+  assert.equal(result.available, false); assert.equal(result.drills.length, 1);
+});

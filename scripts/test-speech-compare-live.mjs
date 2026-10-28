@@ -45,6 +45,10 @@ try {
   await fs.writeFile(input, original, { mode: 0o600 });
   await promisify(execFile)(require('ffmpeg-static'), ['-nostdin', '-loglevel', 'error', '-i', input, '-af', 'atempo=0.85', '-ac', '1', '-ar', '44100', '-c:a', 'aac', '-y', slower]);
   const take = await fs.readFile(slower), d = catalog.drills.find(d => d.id === 'closing');
+  const capabilities = await (await fetch(`http://127.0.0.1:${server.address().port}/`)).json();
+  assert.equal(capabilities.available, true);
+  assert.equal((await db.query('select count(*)::int n from public.artlink_speech_usage')).rows[0].n, 0);
+  output.checks.push({ kind: 'readiness_probe_does_not_write', available: capabilities.available });
   const call = async body => {
     const response = await fetch(`http://127.0.0.1:${server.address().port}/`, { method: 'POST', headers: { Authorization: 'Bearer local-only', 'Content-Type': 'application/json' },
       body: JSON.stringify({ consent: true, requestId: crypto.randomUUID(), reference: d.text, ...body }) });
