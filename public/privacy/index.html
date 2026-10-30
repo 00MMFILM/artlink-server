@@ -35,7 +35,7 @@
     <div class="card">
       <span class="badge">개인정보 처리방침</span>
       <h2>개인정보 처리방침 / Privacy Policy</h2>
-      <p>최종 수정일: 2026년 10월 23일 / Last updated: October 23, 2026</p>
+      <p>최종 수정일: 2026년 10월 30일 / Last updated: October 30, 2026</p>
 
       <h3>1. 수집하는 개인정보 / Information We Collect</h3>
       <p>이름, 이메일, 프로필 정보 (성별, 생년월일, 키, 특기 등), 이용자가 생성한 콘텐츠 (연습 노트, 이미지, 영상, 음성 녹음 및 그 텍스트 변환본)</p>
@@ -53,21 +53,33 @@
       <p>웹 작업실의 사진·영상·음원 파일은 자동 전송하지 않습니다. 이용자가 전송 미리보기를 확인하고 동의한 글·메모·비교 설정만 앱으로 가져오기 위해 암호화하여 임시 보관합니다. 코드는 24시간 동안 유효하며, 코드를 아는 사람은 해당 기록을 가져올 수 있습니다. 웹에서 코드를 취소할 수 있고, 만료된 임시 사본은 매시간 실행되는 정리 작업으로 삭제합니다. 서비스 요청 제한을 위해 IP 주소 자체 대신 매일 바뀌는 해시를 최대 약 25시간 보관합니다. 이 전송 사본은 AI 학습에 사용하지 않습니다. 앱에 저장한 기록은 앱의 삭제·동기화 설정을 따릅니다.</p>
       <p>Original image, video and audio files are not automatically transferred. Only the text, notes and comparison settings you preview and consent to are temporarily stored encrypted for import. Codes are valid for 24 hours; anyone with a code can import that review. You can revoke a code on the web. An hourly cleanup removes expired temporary copies. Request throttling uses a daily changing hash rather than the raw IP address, retained for up to approximately 25 hours. Transfer copies are not used for AI training. Notes saved in the app follow its deletion and sync controls.</p>
 
+      <h3>녹음 구간 점검 / Recording checks</h3>
+      <p>녹음 구간 점검을 선택하고 동의하면 선택한 짧은 녹음과 기준 대사를 서버로 전송합니다. 소리 크기·조용한 구간을 계산하며, 서버의 임시 음성 파일은 처리가 끝나면 삭제합니다. 발음 평가가 활성화된 경우 Microsoft Azure Speech에도 녹음과 대사를 전송합니다. 이 기능은 학습용 원본 보관에 자동 동의시키지 않습니다. 계정·요청 식별자·요청 시간·완료 여부는 이용 한도 관리에 사용하며, 지난 이용 이력은 다음 점검 요청 시 정리되고 회원 탈퇴 시 함께 삭제됩니다. 상세 분석 결과는 화면에만 있으며 사용자가 노트에 추가한 요약은 기존 노트 보관·동기화 정책을 따릅니다.</p>
+      <p>With your consent, recording checks send the selected short recording and reference line to the server to measure signal levels and quiet intervals. Temporary server audio is deleted after processing. When pronunciation assessment is enabled, the recording and line are also sent to Microsoft Azure Speech. This does not opt you into storage of training originals. Account/request identifiers, request time and completion status are used for usage limits; old usage records are cleaned on your next check and removed on account deletion. Detailed results stay in the screen; summaries you choose to add to a note follow existing note storage and sync controls.</p>
+
+
+      <h3>한국어 말투 비교 / Korean Delivery Comparison</h3>
+      <p>말투 비교에 동의하면 선택한 짧은 녹음과 한국어 대사를 아트링크 서버에 전송합니다. 직접 선택한 기준 음성도 비교를 위해 전송되며, 이용자는 해당 음성을 분석에 사용할 권한이 있어야 합니다. 음성은 OpenAI의 음성 인식 서비스에 보내 말한 내용과 단어별 시간을 확인하고, 아트링크 서버는 두 녹음의 음높이 변화와 상대적 구간 길이를 계산합니다. 기본 연습 음성은 AI 합성 음성으로 공인 표준 발음 자료가 아닙니다. 이 기능은 발음·사투리의 정오를 판정하지 않습니다.</p>
+      <p>서버 임시 음성 파일은 처리 후 삭제하며, 분석용 음성·변환 텍스트·음높이 곡선은 아트링크 데이터베이스에 저장하지 않습니다. OpenAI의 처리·보관에는 해당 제공자의 API 데이터 정책이 적용됩니다. 비교 이용 이력은 위 녹음 구간 점검과 같은 한도 관리 정책을 따릅니다. 분석 동의는 학습 활용 동의와 별개입니다. 상세 결과는 현재 화면에서만 표시되며, 이용자가 노트에 추가하고 저장한 연습 요약은 기존 노트 정책을 따릅니다.</p>
+      <p>With consent, selected short recordings and the Korean reference line are sent to ArtLink. If you supply a reference recording, it is also sent for comparison and you must have permission to use it. Audio is sent to OpenAI speech recognition to identify words and timestamps. ArtLink computes pitch movement and relative segment duration. Built-in practice voices are AI-generated and are not certified standard-pronunciation material. This feature does not judge whether a dialect or pronunciation is correct.</p>
+      <p>Temporary server audio files are deleted after processing. Analysis audio, transcripts and pitch curves are not stored in the ArtLink database. OpenAI processing and retention follow its API data policies. Usage records follow the recording-check policy above. Analysis consent is separate from training consent. Details remain on the current screen; practice summaries you add to and save in a note follow existing note policies.</p>
+
+
       <h3>3. 보관 기간 / Retention Period</h3>
       <p>계정 삭제 시까지. 이용자는 언제든지 프로필 > 계정 삭제를 통해 모든 개인정보를 삭제할 수 있습니다.</p>
       <p>Until account deletion. Users can delete all personal information at any time through Profile > Delete Account.</p>
 
       <h3>4. 제3자 제공 / Third-Party Sharing</h3>
-      <p>수집된 정보는 제3자에게 제공하지 않습니다.</p>
-      <p>We do not share collected information with third parties.</p>
+      <p>녹음 점검과 한국어 말투 비교는 위에 설명한 분석 제공자에게 이용자가 동의한 자료를 전송합니다. 선택한 기능과 제공자에 따른 전송 범위·보관 방식은 각 기능 안내를 따릅니다.</p>
+      <p>Recording checks and Korean delivery comparison send consented data to the analysis providers described above. The data sent and retention practices depend on the selected feature and provider, as explained in each feature notice.</p>
 
       <h3>5. 광고 / Advertising</h3>
       <p>본 앱은 Google AdMob을 통해 광고를 표시할 수 있습니다. AdMob은 광고 개인화를 위해 기기 식별자를 수집할 수 있습니다.</p>
       <p>This app may display ads through Google AdMob. AdMob may collect device identifiers for ad personalization.</p>
 
       <h3>6. 데이터 보안 / Data Security</h3>
-      <p>사용자 데이터는 Firebase Authentication 및 Firestore를 통해 안전하게 저장됩니다.</p>
-      <p>User data is securely stored through Firebase Authentication and Firestore.</p>
+      <p>아트링크는 Supabase 인증과 데이터베이스를 사용합니다. 음성 비교 요청은 로그인한 계정으로 확인하며, 이용 횟수 기록은 서버에서만 접근할 수 있습니다. 음성 분석에 사용한 서버 임시 파일은 처리 후 삭제합니다.</p>
+      <p>ArtLink uses Supabase authentication and a database. Speech comparison requests are authenticated, and usage records can only be accessed by the server. Temporary server audio files are deleted after processing.</p>
 
       <h3>7. 이용자의 권리 / User Rights</h3>
       <ul>
